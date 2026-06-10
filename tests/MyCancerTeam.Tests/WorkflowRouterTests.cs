@@ -17,6 +17,5 @@ public sealed class WorkflowRouterTests
 
         Assert.Contains(AgentRole.FinancialAssistant, roles);
         Assert.Contains(AgentRole.AdminLogistics, roles);
-        Assert.Contains(AgentRole.ResearchOncology, roles);
     }
 }

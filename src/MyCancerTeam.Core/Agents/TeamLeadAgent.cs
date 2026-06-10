@@ -5,6 +5,9 @@ namespace MyCancerTeam.Core.Agents;
 
 public sealed class TeamLeadAgent : ITeamLeadAgent
 {
+    private const decimal MinimumConfidenceLevel = 0.20m;
+    private const decimal StandardConfidenceLevel = 0.60m;
+
     private readonly IAgentRegistry _agentRegistry;
     private readonly WorkflowRouter _workflowRouter;
 
@@ -71,7 +74,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             Role = Role,
             Summary = summaryBuilder.ToString().Trim(),
             TechnicalSummary = "Consolidated specialist viewpoints with tracked uncertainties and unresolved issues.",
-            ConfidenceLevel = specialistResponses.Count == 0 ? 0.20m : 0.60m,
+            ConfidenceLevel = specialistResponses.Count == 0 ? MinimumConfidenceLevel : StandardConfidenceLevel,
             OpenQuestions = openQuestions,
             SuggestedClinicianQuestions = suggestions,
             Citations = citations

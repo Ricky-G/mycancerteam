@@ -53,7 +53,7 @@ Cancer care is complex and stressful. This project helps patients/support people
    - If needed: `az account set --subscription <subscription-id>`
 5. Run:
    - `dotnet restore MyCancerTeam.slnx`
-   - `dotnet run --project /home/runner/work/mycancerteam/mycancerteam/amul047/mycancerteam/src/MyCancerTeam.App/MyCancerTeam.App.csproj`
+   - `dotnet run --project src/MyCancerTeam.App`
 
 ## Configuration
 Configuration is loaded from:
