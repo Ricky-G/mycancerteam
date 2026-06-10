@@ -8,6 +8,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
 {
     private const decimal MinimumConfidenceLevel = 0.20m;
     private const decimal StandardConfidenceLevel = 0.60m;
+    private const string TeamLeadSessionIdFormat = "teamlead-{0}-{1:N}";
 
     private readonly IAgentRegistry _agentRegistry;
     private readonly WorkflowRouter _workflowRouter;
@@ -30,9 +31,9 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
     {
         var roles = _workflowRouter.GetRecommendedRoles(request);
         var specialistExecutors = new List<ExecutorBinding>();
-        var start = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, WorkflowRequest>(
+        var workflowInputExecutor = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, WorkflowRequest>(
             (WorkflowRequest input, CancellationToken _) => ValueTask.FromResult(input),
-            "workflow-input",
+            "teamlead-workflow-input",
             ExecutorOptions.Default,
             threadsafe: true);
 
@@ -53,7 +54,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
                 }, token)),
                 executorId,
                 ExecutorOptions.Default,
-                threadsafe: false);
+                threadsafe: true);
 
             specialistExecutors.Add(specialistExecutor);
         }
@@ -61,7 +62,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         var specialistResponses = new List<AgentResponse>();
         if (specialistExecutors.Count > 0)
         {
-            var builder = new WorkflowBuilder(start)
+            var builder = new WorkflowBuilder(workflowInputExecutor)
                 .WithName("TeamLeadSpecialistWorkflow")
                 .WithDescription("Routes the request through recommended specialist agents.")
                 .WithOutputFrom(specialistExecutors.ToArray());
@@ -69,14 +70,15 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             foreach (var specialistExecutor in specialistExecutors)
             {
                 builder.BindExecutor(specialistExecutor)
-                    .AddEdge(start, specialistExecutor);
+                    .AddEdge(workflowInputExecutor, specialistExecutor);
             }
 
             var workflow = builder.Build(validateOrphans: true);
+            var sessionId = string.Format(TeamLeadSessionIdFormat, request.WorkflowType, Guid.NewGuid());
             await using var run = await InProcessExecution.RunAsync(
                 workflow,
                 request,
-                sessionId: Guid.NewGuid().ToString("N"),
+                sessionId: sessionId,
                 cancellationToken: cancellationToken);
 
             specialistResponses = run.OutgoingEvents
