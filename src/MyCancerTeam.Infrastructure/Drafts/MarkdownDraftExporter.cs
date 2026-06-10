@@ -16,7 +16,18 @@ public sealed class MarkdownDraftExporter : IMarkdownDraftExporter
     {
         var safeType = string.IsNullOrWhiteSpace(draftType)
             ? "general"
-            : draftType.Trim().ToLowerInvariant().Replace(' ', '-');
+            : new string(draftType
+                .Trim()
+                .ToLowerInvariant()
+                .Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-')
+                .ToArray())
+                .Trim('-');
+
+        safeType = Path.GetFileName(safeType);
+        if (string.IsNullOrWhiteSpace(safeType) || safeType is "." or "..")
+        {
+            safeType = "general";
+        }
 
         var folder = Path.Combine(_configuration.DraftCommunicationsFolderPath, safeType);
         Directory.CreateDirectory(folder);
