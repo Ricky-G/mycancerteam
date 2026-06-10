@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Agents.AI.Workflows;
 using MyCancerTeam.Core.Workflows;
 
 namespace MyCancerTeam.Core.Agents;
@@ -28,7 +29,12 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
     public async Task<AgentResponse> CoordinateAsync(WorkflowRequest request, string sharedNotes, CancellationToken cancellationToken = default)
     {
         var roles = _workflowRouter.GetRecommendedRoles(request);
-        var specialistResponses = new List<AgentResponse>();
+        var specialistExecutors = new List<ExecutorBinding>();
+        var start = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, WorkflowRequest>(
+            (WorkflowRequest input, CancellationToken _) => ValueTask.FromResult(input),
+            "workflow-input",
+            ExecutorOptions.Default,
+            threadsafe: true);
 
         foreach (var role in roles)
         {
@@ -38,13 +44,47 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
                 continue;
             }
 
-            var response = await agent.RespondAsync(new AgentContext
-            {
-                WorkflowRequest = request,
-                SharedNotes = sharedNotes
-            }, cancellationToken);
+            var executorId = $"agent-{role.ToString().ToLowerInvariant()}";
+            var specialistExecutor = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, AgentResponse>(
+                (WorkflowRequest input, CancellationToken token) => new ValueTask<AgentResponse>(agent.RespondAsync(new AgentContext
+                {
+                    WorkflowRequest = input,
+                    SharedNotes = sharedNotes
+                }, token)),
+                executorId,
+                ExecutorOptions.Default,
+                threadsafe: false);
 
-            specialistResponses.Add(response);
+            specialistExecutors.Add(specialistExecutor);
+        }
+
+        var specialistResponses = new List<AgentResponse>();
+        if (specialistExecutors.Count > 0)
+        {
+            var builder = new WorkflowBuilder(start)
+                .WithName("TeamLeadSpecialistWorkflow")
+                .WithDescription("Routes the request through recommended specialist agents.")
+                .WithOutputFrom(specialistExecutors.ToArray());
+
+            foreach (var specialistExecutor in specialistExecutors)
+            {
+                builder.BindExecutor(specialistExecutor)
+                    .AddEdge(start, specialistExecutor);
+            }
+
+            var workflow = builder.Build(validateOrphans: true);
+            await using var run = await InProcessExecution.RunAsync(
+                workflow,
+                request,
+                sessionId: Guid.NewGuid().ToString("N"),
+                cancellationToken: cancellationToken);
+
+            specialistResponses = run.OutgoingEvents
+                .OfType<WorkflowOutputEvent>()
+                .Select(static output => output.As<AgentResponse>())
+                .Where(static response => response is not null)
+                .Cast<AgentResponse>()
+                .ToList();
         }
 
         var summaryBuilder = new StringBuilder();

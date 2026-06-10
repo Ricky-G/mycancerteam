@@ -41,4 +41,5 @@ public sealed class MarkdownNoteStore : INoteStore
 
         var path = Path.Combine(_configuration.AgentMemoryFolderPath, safeFileName);
         await File.WriteAllTextAsync(path, content, cancellationToken);
+    }
 }
