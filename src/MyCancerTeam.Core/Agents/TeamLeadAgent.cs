@@ -8,7 +8,8 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
 {
     private const decimal MinimumConfidenceLevel = 0.20m;
     private const decimal StandardConfidenceLevel = 0.60m;
-    private const string TeamLeadSessionIdFormat = "teamlead-{0}-{1:N}";
+    private const string TeamLeadSessionIdTemplate = "teamlead-{0}-{1:N}";
+    private const string TeamLeadWorkflowInputExecutorId = "teamlead-workflow-input";
 
     private readonly IAgentRegistry _agentRegistry;
     private readonly WorkflowRouter _workflowRouter;
@@ -30,10 +31,11 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
     public async Task<AgentResponse> CoordinateAsync(WorkflowRequest request, string sharedNotes, CancellationToken cancellationToken = default)
     {
         var roles = _workflowRouter.GetRecommendedRoles(request);
+        var sessionId = string.Format(TeamLeadSessionIdTemplate, request.WorkflowType, Guid.NewGuid());
         var specialistExecutors = new List<ExecutorBinding>();
         var workflowInputExecutor = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, WorkflowRequest>(
             (WorkflowRequest input, CancellationToken _) => ValueTask.FromResult(input),
-            "teamlead-workflow-input",
+            TeamLeadWorkflowInputExecutorId,
             ExecutorOptions.Default,
             threadsafe: true);
 
@@ -72,9 +74,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
                 builder.BindExecutor(specialistExecutor)
                     .AddEdge(workflowInputExecutor, specialistExecutor);
             }
-
             var workflow = builder.Build(validateOrphans: true);
-            var sessionId = string.Format(TeamLeadSessionIdFormat, request.WorkflowType, Guid.NewGuid());
             await using var run = await InProcessExecution.RunAsync(
                 workflow,
                 request,
