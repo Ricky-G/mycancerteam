@@ -80,6 +80,14 @@ The app auto-creates four local folders under `.local/` by default:
 - `.local/research/` - cached searches, evidence summaries and global treatment searches (input/output)
 - `.local/our-notes/` - the app's own output: shared `notes.md`, agent memory and drafts (output)
 
+## Supported note formats
+The folder watcher picks up these file types from the input folders and extracts their text locally (no document content is sent anywhere just to be read):
+- Plain text: `.md`, `.markdown`, `.txt`
+- PDF: `.pdf` - text extracted with [PdfPig](https://github.com/UglyToad/PdfPig) (Apache-2.0)
+- Word: `.docx` - text extracted with [DocumentFormat.OpenXml](https://github.com/dotnet/Open-XML-SDK) (MIT)
+
+Scanned/image-only PDFs have no embedded text, so nothing can be extracted; these are logged and skipped (flagged as needing OCR) rather than processed. OCR (e.g. Azure AI Document Intelligence) is a planned follow-up.
+
 ## Run commands
 - Build: `dotnet build MyCancerTeam.slnx`
 - Run app: `dotnet run --project src/MyCancerTeam.App`

@@ -14,4 +14,10 @@ public sealed record DetectedNote
 
     /// <summary>Text content of the detected file.</summary>
     public required string Content { get; init; }
+
+    /// <summary>
+    /// True when the file is a document (e.g. a scanned/image-only PDF) from which no text
+    /// could be extracted, indicating that OCR is required before its contents can be used.
+    /// </summary>
+    public bool RequiresOcr { get; init; }
 }
