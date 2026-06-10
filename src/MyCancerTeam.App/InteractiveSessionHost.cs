@@ -152,6 +152,12 @@ public sealed class InteractiveSessionHost
                 var newNotes = await _scanner.ScanForNewNotesAsync(cancellationToken);
                 foreach (var note in newNotes)
                 {
+                    if (note.RequiresOcr)
+                    {
+                        Log($"Skipped note with no extractable text (looks scanned/image-only; OCR not yet supported): {note.FilePath}");
+                        continue;
+                    }
+
                     Log($"New note detected: {note.FilePath}");
                     await writer.WriteAsync(
                         new WorkItem(WorkItemKind.FileNote, note.Content, $"File: {note.FilePath}"),
