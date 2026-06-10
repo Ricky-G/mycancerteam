@@ -17,10 +17,10 @@ public sealed class ResearchRefreshService : IResearchRefreshService
     public async Task RefreshAsync(string patientContext, CancellationToken cancellationToken = default)
     {
         var update = await _researchOncologyService.GetLatestEvidenceAsync(patientContext, cancellationToken);
-        Directory.CreateDirectory(_configuration.ResearchSummariesFolderPath);
+        Directory.CreateDirectory(_configuration.ResearchFolderPath);
 
         var generatedUtc = DateTimeOffset.UtcNow;
-        var filePath = Path.Combine(_configuration.ResearchSummariesFolderPath, $"{generatedUtc:yyyyMMdd-HHmmss}-research-update.md");
+        var filePath = Path.Combine(_configuration.ResearchFolderPath, $"{generatedUtc:yyyyMMdd-HHmmss}-research-update.md");
 
         var markdown = $"""
 # Research Update

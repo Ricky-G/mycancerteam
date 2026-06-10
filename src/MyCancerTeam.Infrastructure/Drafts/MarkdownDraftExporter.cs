@@ -29,11 +29,10 @@ public sealed class MarkdownDraftExporter : IMarkdownDraftExporter
             safeType = "general";
         }
 
-        var folder = Path.Combine(_configuration.DraftCommunicationsFolderPath, safeType);
-        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(_configuration.OurNotesFolderPath);
 
-        var fileName = $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-draft.md";
-        var path = Path.Combine(folder, fileName);
+        var fileName = $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{safeType}-draft.md";
+        var path = Path.Combine(_configuration.OurNotesFolderPath, fileName);
 
         await File.WriteAllTextAsync(path, markdownContent, cancellationToken);
         return path;

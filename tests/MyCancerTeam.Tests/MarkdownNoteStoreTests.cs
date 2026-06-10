@@ -14,8 +14,7 @@ public sealed class MarkdownNoteStoreTests
         var config = new AppConfiguration
         {
             LocalWorkingFolderPath = root,
-            LatestSharedNotesPath = Path.Combine(root, "notes", "notes.md"),
-            AgentMemoryFolderPath = Path.Combine(root, "agent-memory")
+            OurNotesFolderPath = Path.Combine(root, "our-notes")
         };
 
         try
@@ -25,7 +24,7 @@ public sealed class MarkdownNoteStoreTests
             var shared = await store.ReadSharedNotesAsync();
 
             await store.WriteAgentNotesAsync("research-oncology.md", "agent content");
-            var agentPath = Path.Combine(config.AgentMemoryFolderPath, "research-oncology.md");
+            var agentPath = Path.Combine(config.OurNotesFolderPath, "research-oncology.md");
 
             Assert.Equal("hello notes", shared);
             Assert.True(File.Exists(agentPath));

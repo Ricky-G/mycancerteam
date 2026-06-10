@@ -14,24 +14,24 @@ public sealed class MarkdownNoteStore : INoteStore
 
     public async Task<string> ReadSharedNotesAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(_configuration.LatestSharedNotesPath))
+        if (!File.Exists(_configuration.SharedNotesFilePath))
         {
             return string.Empty;
         }
 
-        return await File.ReadAllTextAsync(_configuration.LatestSharedNotesPath, cancellationToken);
+        return await File.ReadAllTextAsync(_configuration.SharedNotesFilePath, cancellationToken);
     }
 
     public async Task WriteSharedNotesAsync(string content, CancellationToken cancellationToken = default)
     {
-        var folder = Path.GetDirectoryName(_configuration.LatestSharedNotesPath) ?? _configuration.LocalWorkingFolderPath;
+        var folder = Path.GetDirectoryName(_configuration.SharedNotesFilePath) ?? _configuration.OurNotesFolderPath;
         Directory.CreateDirectory(folder);
-        await File.WriteAllTextAsync(_configuration.LatestSharedNotesPath, content, cancellationToken);
+        await File.WriteAllTextAsync(_configuration.SharedNotesFilePath, content, cancellationToken);
     }
 
     public async Task WriteAgentNotesAsync(string agentFileName, string content, CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(_configuration.AgentMemoryFolderPath);
+        Directory.CreateDirectory(_configuration.OurNotesFolderPath);
 
         var safeFileName = Path.GetFileName(agentFileName);
         if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName is "." or "..")
@@ -39,7 +39,7 @@ public sealed class MarkdownNoteStore : INoteStore
             throw new ArgumentException("Agent notes file name must be a simple file name.", nameof(agentFileName));
         }
 
-        var path = Path.Combine(_configuration.AgentMemoryFolderPath, safeFileName);
+        var path = Path.Combine(_configuration.OurNotesFolderPath, safeFileName);
         await File.WriteAllTextAsync(path, content, cancellationToken);
     }
 }

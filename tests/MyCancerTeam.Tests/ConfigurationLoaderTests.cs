@@ -33,7 +33,7 @@ public sealed class ConfigurationLoaderTests
             Assert.Equal("https://from-config.openai.azure.com/", config.AzureOpenAiEndpoint);
             Assert.Equal("env-deployment", config.AzureOpenAiDeployment);
             Assert.True(Path.IsPathRooted(config.LocalWorkingFolderPath));
-            Assert.EndsWith(Path.Combine(".local", "notes", "notes.md"), config.LatestSharedNotesPath);
+            Assert.EndsWith(Path.Combine(".local", "our-notes", "notes.md"), config.SharedNotesFilePath);
         }
         finally
         {
