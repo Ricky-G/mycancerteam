@@ -6,19 +6,21 @@ public sealed class AppConfiguration
     public string AzureOpenAiEndpoint { get; set; } = string.Empty;
     public string AzureOpenAiDeployment { get; set; } = string.Empty;
     public string LocalWorkingFolderPath { get; set; } = string.Empty;
-    public string IterationsFolderPath { get; set; } = string.Empty;
-    public string ClinicalNotesFolderPath { get; set; } = string.Empty;
-    public string ReportsFolderPath { get; set; } = string.Empty;
-    public string ImagingFolderPath { get; set; } = string.Empty;
-    public string RadiationPlanFolderPath { get; set; } = string.Empty;
-    public string MedicationPlanFolderPath { get; set; } = string.Empty;
-    public string InsuranceDocumentsFolderPath { get; set; } = string.Empty;
-    public string ResearchCacheFolderPath { get; set; } = string.Empty;
-    public string ResearchSummariesFolderPath { get; set; } = string.Empty;
-    public string GlobalTreatmentSearchCacheFolderPath { get; set; } = string.Empty;
-    public string InternationalSecondOpinionDocumentsFolderPath { get; set; } = string.Empty;
-    public string DraftCommunicationsFolderPath { get; set; } = string.Empty;
-    public string AgentMemoryFolderPath { get; set; } = string.Empty;
-    public string LatestSharedNotesPath { get; set; } = string.Empty;
+
+    /// <summary>Medical input notes: clinical notes, reports, imaging, radiation and medication plans.</summary>
+    public string MedicalNotesFolderPath { get; set; } = string.Empty;
+
+    /// <summary>Non-medical input notes: insurance documents and international second-opinion paperwork.</summary>
+    public string NonMedicalNotesFolderPath { get; set; } = string.Empty;
+
+    /// <summary>Research input/output: cached searches, evidence summaries and global treatment searches.</summary>
+    public string ResearchFolderPath { get; set; } = string.Empty;
+
+    /// <summary>The application's own output: shared notes, agent memory and drafts.</summary>
+    public string OurNotesFolderPath { get; set; } = string.Empty;
+
     public string? DailyResearchRefreshSchedule { get; set; }
+
+    /// <summary>The shared notes markdown file, stored within <see cref="OurNotesFolderPath"/>.</summary>
+    public string SharedNotesFilePath => Path.Combine(OurNotesFolderPath, "notes.md");
 }

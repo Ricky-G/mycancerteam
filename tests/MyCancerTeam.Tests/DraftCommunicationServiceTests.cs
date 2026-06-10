@@ -16,7 +16,7 @@ public sealed class DraftCommunicationServiceTests
         {
             var config = new AppConfiguration
             {
-                DraftCommunicationsFolderPath = root
+                OurNotesFolderPath = root
             };
 
             var exporter = new MarkdownDraftExporter(config);

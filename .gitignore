@@ -16,6 +16,9 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# Visual Studio cache/options directory
+.vs/
+
 # .NET Core
 project.lock.json
 project.fragment.lock.json
@@ -53,20 +56,11 @@ nunit-*.xml
 # Local sensitive/project-private data
 .local/
 **/.local/
-**/clinical-notes/
-**/reports/
-**/imaging/
+**/medical-notes/
+**/non-medical-notes/
+**/research/
+**/our-notes/
 **/scan*/
-**/radiation-plans/
-**/medication-plans/
-**/insurance-documents/
-**/agent-memory/
-**/research-cache/
-**/research-summaries/
-**/global-treatment-search/
-**/international-second-opinions/
-**/drafts/
-**/iterations/
 
 # Environment-specific configuration secrets
 config/environments/*/secrets.*

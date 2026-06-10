@@ -67,42 +67,18 @@ Core vars:
 - `MYCANCERTEAM_AZURE_OPENAI_ENDPOINT`
 - `MYCANCERTEAM_AZURE_OPENAI_DEPLOYMENT`
 - `MYCANCERTEAM_LOCAL_WORKING_FOLDER`
-- `MYCANCERTEAM_ITERATIONS_FOLDER`
-- `MYCANCERTEAM_CLINICAL_NOTES_FOLDER`
-- `MYCANCERTEAM_REPORTS_FOLDER`
-- `MYCANCERTEAM_IMAGING_FOLDER`
-- `MYCANCERTEAM_RADIATION_PLAN_FOLDER`
-- `MYCANCERTEAM_MEDICATION_PLAN_FOLDER`
-- `MYCANCERTEAM_INSURANCE_DOCUMENTS_FOLDER`
-- `MYCANCERTEAM_RESEARCH_CACHE_FOLDER`
-- `MYCANCERTEAM_RESEARCH_SUMMARIES_FOLDER`
-- `MYCANCERTEAM_GLOBAL_TREATMENT_SEARCH_FOLDER`
-- `MYCANCERTEAM_INTL_SECOND_OPINIONS_FOLDER`
-- `MYCANCERTEAM_DRAFTS_FOLDER`
-- `MYCANCERTEAM_AGENT_MEMORY_FOLDER`
-- `MYCANCERTEAM_LATEST_SHARED_NOTES_PATH`
+- `MYCANCERTEAM_MEDICAL_NOTES_FOLDER`
+- `MYCANCERTEAM_NON_MEDICAL_NOTES_FOLDER`
+- `MYCANCERTEAM_RESEARCH_FOLDER`
+- `MYCANCERTEAM_OUR_NOTES_FOLDER`
 - `MYCANCERTEAM_DAILY_RESEARCH_REFRESH_SCHEDULE` (optional)
 
 ## Local folder setup
-The app auto-creates local folders under `.local/` by default:
-- `.local/notes/notes.md`
-- `.local/agent-memory/`
-- `.local/clinical-notes/`
-- `.local/imaging/`
-- `.local/radiation-plans/`
-- `.local/medication-plans/`
-- `.local/reports/`
-- `.local/insurance-documents/`
-- `.local/iterations/`
-- `.local/research-cache/`
-- `.local/research-summaries/`
-- `.local/global-treatment-search/`
-- `.local/international-second-opinions/`
-- `.local/drafts/`
-- `.local/drafts/emails/`
-- `.local/drafts/insurance/`
-- `.local/drafts/second-opinions/`
-- `.local/drafts/trials/`
+The app auto-creates four local folders under `.local/` by default:
+- `.local/medical-notes/` - clinical notes, reports, imaging, radiation and medication plans (input)
+- `.local/non-medical-notes/` - insurance documents and international second-opinion paperwork (input)
+- `.local/research/` - cached searches, evidence summaries and global treatment searches (input/output)
+- `.local/our-notes/` - the app's own output: shared `notes.md`, agent memory and drafts (output)
 
 ## Run commands
 - Build: `dotnet build MyCancerTeam.slnx`
@@ -133,4 +109,4 @@ The app auto-creates local folders under `.local/` by default:
 Do not store secrets in committed files.
 
 ## Ignored folders/files
-See `.gitignore` for local-sensitive patterns including `.local/`, patient documents, research cache/summaries, drafts, iterations, and `.env` files.
+See `.gitignore` for local-sensitive patterns including `.local/`, medical and non-medical notes, research, our-notes, and `.env` files.
