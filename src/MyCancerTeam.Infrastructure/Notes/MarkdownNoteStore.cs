@@ -32,7 +32,13 @@ public sealed class MarkdownNoteStore : INoteStore
     public async Task WriteAgentNotesAsync(string agentFileName, string content, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_configuration.AgentMemoryFolderPath);
-        var path = Path.Combine(_configuration.AgentMemoryFolderPath, agentFileName);
+
+        var safeFileName = Path.GetFileName(agentFileName);
+        if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName is "." or "..")
+        {
+            throw new ArgumentException("Agent notes file name must be a simple file name.", nameof(agentFileName));
+        }
+
+        var path = Path.Combine(_configuration.AgentMemoryFolderPath, safeFileName);
         await File.WriteAllTextAsync(path, content, cancellationToken);
-    }
 }
