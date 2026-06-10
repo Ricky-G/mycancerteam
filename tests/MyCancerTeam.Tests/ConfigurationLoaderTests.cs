@@ -19,6 +19,9 @@ public sealed class ConfigurationLoaderTests
             }
             """);
 
+        var previousEnvironment = Environment.GetEnvironmentVariable("MYCANCERTEAM_ENVIRONMENT");
+        var previousDeployment = Environment.GetEnvironmentVariable("MYCANCERTEAM_AZURE_OPENAI_DEPLOYMENT");
+
         Environment.SetEnvironmentVariable("MYCANCERTEAM_ENVIRONMENT", "dev");
         Environment.SetEnvironmentVariable("MYCANCERTEAM_AZURE_OPENAI_DEPLOYMENT", "env-deployment");
 
@@ -34,8 +37,8 @@ public sealed class ConfigurationLoaderTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("MYCANCERTEAM_ENVIRONMENT", null);
-            Environment.SetEnvironmentVariable("MYCANCERTEAM_AZURE_OPENAI_DEPLOYMENT", null);
+            Environment.SetEnvironmentVariable("MYCANCERTEAM_ENVIRONMENT", previousEnvironment);
+            Environment.SetEnvironmentVariable("MYCANCERTEAM_AZURE_OPENAI_DEPLOYMENT", previousDeployment);
             Directory.Delete(root, true);
         }
     }
