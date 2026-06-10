@@ -208,6 +208,11 @@ public sealed class InteractiveSessionHost
         await _noteStore.WriteSharedNotesAsync(updatedNotes, cancellationToken);
 
         Log($"Shared notes updated at: {_configuration.SharedNotesFilePath}");
+
+        var summary = BuildSummary(item, response);
+        await _noteStore.WriteSummaryAsync(summary, cancellationToken);
+
+        Log($"Summary updated at: {_configuration.SummaryFilePath}");
     }
 
     private async Task HandleDraftAsync(CancellationToken cancellationToken)
@@ -249,6 +254,43 @@ public sealed class InteractiveSessionHost
                 }
             }
         }
+    }
+
+    private static string BuildSummary(WorkItem item, AgentResponse response)
+    {
+        var summary = new StringBuilder();
+        summary.AppendLine("# MyCancerTeam Summary");
+        summary.AppendLine();
+        summary.AppendLine($"_Last updated: {DateTimeOffset.UtcNow:O}_");
+        summary.AppendLine();
+        summary.AppendLine($"**Source:** {item.Source}");
+        summary.AppendLine($"**Input:** {item.Input}");
+        summary.AppendLine($"**Confidence:** {response.ConfidenceLevel:P0}");
+        summary.AppendLine();
+        summary.AppendLine("## Team Lead Summary");
+        summary.AppendLine(response.Summary);
+
+        if (response.OpenQuestions.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("## Open Questions");
+            foreach (var question in response.OpenQuestions)
+            {
+                summary.AppendLine($"- {question}");
+            }
+        }
+
+        if (response.SuggestedClinicianQuestions.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("## Suggested Clinician Questions");
+            foreach (var question in response.SuggestedClinicianQuestions)
+            {
+                summary.AppendLine($"- {question}");
+            }
+        }
+
+        return summary.ToString();
     }
 
     private static string BuildUpdatedNotes(string sharedNotes, WorkItem item, AgentResponse response)

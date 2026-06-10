@@ -42,4 +42,10 @@ public sealed class MarkdownNoteStore : INoteStore
         var path = Path.Combine(_configuration.OurNotesFolderPath, safeFileName);
         await File.WriteAllTextAsync(path, content, cancellationToken);
     }
+
+    public async Task WriteSummaryAsync(string content, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(_configuration.LocalWorkingFolderPath);
+        await File.WriteAllTextAsync(_configuration.SummaryFilePath, content, cancellationToken);
+    }
 }

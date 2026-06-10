@@ -23,4 +23,7 @@ public sealed class AppConfiguration
 
     /// <summary>The shared notes markdown file, stored within <see cref="OurNotesFolderPath"/>.</summary>
     public string SharedNotesFilePath => Path.Combine(OurNotesFolderPath, "notes.md");
+
+    /// <summary>The summary markdown file, stored at the <see cref="LocalWorkingFolderPath"/> root.</summary>
+    public string SummaryFilePath => Path.Combine(LocalWorkingFolderPath, "summary.md");
 }
