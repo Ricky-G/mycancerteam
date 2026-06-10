@@ -19,12 +19,13 @@ public sealed class ResearchRefreshService : IResearchRefreshService
         var update = await _researchOncologyService.GetLatestEvidenceAsync(patientContext, cancellationToken);
         Directory.CreateDirectory(_configuration.ResearchSummariesFolderPath);
 
-        var filePath = Path.Combine(_configuration.ResearchSummariesFolderPath, $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-research-update.md");
+        var generatedUtc = DateTimeOffset.UtcNow;
+        var filePath = Path.Combine(_configuration.ResearchSummariesFolderPath, $"{generatedUtc:yyyyMMdd-HHmmss}-research-update.md");
 
         var markdown = $"""
 # Research Update
 
-- Generated (UTC): {DateTimeOffset.UtcNow:O}
+- Generated (UTC): {generatedUtc:O}
 - Schedule setting: {_configuration.DailyResearchRefreshSchedule ?? "not set"}
 
 ## Patient-Friendly Summary
