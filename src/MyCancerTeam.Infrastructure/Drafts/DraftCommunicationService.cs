@@ -80,7 +80,7 @@ public sealed class DraftCommunicationService : IDraftCommunicationService
         {
         }
 
-        return (request.Subject, json);
+        return (request.Subject, "Draft content could not be generated. Please retry.");
     }
 
     private sealed class DraftResponseDto
