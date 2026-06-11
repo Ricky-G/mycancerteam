@@ -57,12 +57,22 @@ public sealed class PatientOwnerAgent : ISpecialistAgent
                 return null;
             }
 
+            var confidence = dto.ConfidenceLevel;
+            if (confidence < 0m)
+            {
+                confidence = 0m;
+            }
+            else if (confidence > 1m)
+            {
+                confidence = 1m;
+            }
+
             return new AgentResponse
             {
                 Role = Role,
                 Summary = dto.Summary ?? string.Empty,
                 TechnicalSummary = dto.TechnicalSummary ?? string.Empty,
-                ConfidenceLevel = dto.ConfidenceLevel,
+                ConfidenceLevel = confidence,
                 SuggestedClinicianQuestions = dto.SuggestedClinicianQuestions ?? [],
                 OpenQuestions = dto.OpenQuestions ?? []
             };
