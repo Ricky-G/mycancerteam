@@ -366,6 +366,13 @@ public sealed class InteractiveSessionHost
             return WorkflowType.SymptomSupport;
         }
 
+        if (normalized.Contains("exercise") || normalized.Contains("fitness") || normalized.Contains("physical activity")
+            || normalized.Contains("workout") || normalized.Contains("walking") || normalized.Contains("physio")
+            || normalized.Contains("rehabilitation") || normalized.Contains("rehab"))
+        {
+            return WorkflowType.PhysicalFitness;
+        }
+
         return WorkflowType.GeneralUpdate;
     }
 

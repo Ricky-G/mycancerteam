@@ -12,5 +12,6 @@ public enum AgentRole
     Psychologist,
     FinancialAssistant,
     SocialWorker,
-    AdminLogistics
+    AdminLogistics,
+    PhysicalFitness
 }
