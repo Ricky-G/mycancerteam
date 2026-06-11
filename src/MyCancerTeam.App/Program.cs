@@ -33,6 +33,7 @@ registry.Register(new SpecialistAgent(AgentRole.Psychologist, "Psychologist / Em
 registry.Register(new SpecialistAgent(AgentRole.FinancialAssistant, "Financial Assistant Agent", llmClient));
 registry.Register(new SpecialistAgent(AgentRole.SocialWorker, "Social Worker / Care Navigation Agent", llmClient));
 registry.Register(new SpecialistAgent(AgentRole.AdminLogistics, "Admin / Logistics Agent", llmClient));
+registry.Register(new PhysicalFitnessAgent());
 
 var teamLeadAgent = new TeamLeadAgent(registry, new WorkflowRouter());
 registry.Register(teamLeadAgent);
