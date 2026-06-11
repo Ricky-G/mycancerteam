@@ -33,6 +33,11 @@ public sealed class AzureOpenAiChatClient : ILlmChatClient
             return string.Empty;
         }
 
-        return content[0].Text;
-    }
+        var builder = new System.Text.StringBuilder();
+        foreach (var part in content)
+        {
+            builder.Append(part.Text);
+        }
+
+        return builder.ToString();
 }
