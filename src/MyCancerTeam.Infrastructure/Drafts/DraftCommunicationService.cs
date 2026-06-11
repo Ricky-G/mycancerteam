@@ -62,6 +62,11 @@ public sealed class DraftCommunicationService : IDraftCommunicationService
         };
     }
 
+    private const string SafetyNote = """
+        ---
+        **Safety and Validation Note:** Always verify major decisions, treatments, or actions with qualified healthcare professionals before proceeding.
+        """;
+
     private static (string subject, string draftContent) ParseDraftResponse(string json, DraftCommunicationRequest request)
     {
         try
@@ -73,7 +78,7 @@ public sealed class DraftCommunicationService : IDraftCommunicationService
                 var content = string.IsNullOrWhiteSpace(dto.DraftContent)
                     ? "Draft content could not be generated. Please retry."
                     : dto.DraftContent;
-                return (subject, content);
+                return (subject, EnsureSafetyNote(content));
             }
         }
         catch (JsonException)
@@ -81,6 +86,14 @@ public sealed class DraftCommunicationService : IDraftCommunicationService
         }
 
         return (request.Subject, "Draft content could not be generated. Please retry.");
+    }
+
+    private static string EnsureSafetyNote(string content)
+    {
+        if (content.Contains("Safety and Validation Note", StringComparison.OrdinalIgnoreCase))
+            return content;
+
+        return content + Environment.NewLine + Environment.NewLine + SafetyNote;
     }
 
     private sealed class DraftResponseDto

@@ -40,4 +40,5 @@ public sealed class AzureOpenAiChatClient : ILlmChatClient
         }
 
         return builder.ToString();
+    }
 }
