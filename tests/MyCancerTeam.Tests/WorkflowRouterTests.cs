@@ -18,4 +18,18 @@ public sealed class WorkflowRouterTests
         Assert.Contains(AgentRole.FinancialAssistant, roles);
         Assert.Contains(AgentRole.AdminLogistics, roles);
     }
+
+    [Fact]
+    public void WorkflowRouter_ShouldRoutePhysicalFitnessToFitnessAndPsychologyAgents()
+    {
+        var router = new WorkflowRouter();
+        var roles = router.GetRecommendedRoles(new WorkflowRequest
+        {
+            WorkflowType = WorkflowType.PhysicalFitness,
+            UserInput = "exercise plan"
+        });
+
+        Assert.Contains(AgentRole.PhysicalFitness, roles);
+        Assert.Contains(AgentRole.Psychologist, roles);
+    }
 }

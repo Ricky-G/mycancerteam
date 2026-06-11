@@ -24,6 +24,7 @@ public sealed class WorkflowRouter
             WorkflowType.ResearchMonitoring => [AgentRole.ResearchOncology],
             WorkflowType.GlobalTreatmentAccess => [AgentRole.ResearchOncology, AgentRole.SocialWorker, AgentRole.AdminLogistics],
             WorkflowType.DraftOutreach => [AgentRole.AdminLogistics, AgentRole.FinancialAssistant],
+            WorkflowType.PhysicalFitness => [AgentRole.PhysicalFitness, AgentRole.Psychologist],
             _ => [AgentRole.MedicalOncologist]
         });
 
