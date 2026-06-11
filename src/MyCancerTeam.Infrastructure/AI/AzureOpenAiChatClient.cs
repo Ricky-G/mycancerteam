@@ -27,6 +27,12 @@ public sealed class AzureOpenAiChatClient : ILlmChatClient
             options,
             cancellationToken);
 
-        return completion.Value.Content[0].Text;
+        var content = completion.Value.Content;
+        if (content.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return content[0].Text;
     }
 }

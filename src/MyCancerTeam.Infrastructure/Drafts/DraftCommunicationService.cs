@@ -69,7 +69,11 @@ public sealed class DraftCommunicationService : IDraftCommunicationService
             var dto = JsonSerializer.Deserialize<DraftResponseDto>(json, JsonOptions);
             if (dto is not null)
             {
-                return (dto.Subject ?? request.Subject, dto.DraftContent ?? json);
+                var subject = string.IsNullOrWhiteSpace(dto.Subject) ? request.Subject : dto.Subject;
+                var content = string.IsNullOrWhiteSpace(dto.DraftContent)
+                    ? "Draft content could not be generated. Please retry."
+                    : dto.DraftContent;
+                return (subject, content);
             }
         }
         catch (JsonException)
