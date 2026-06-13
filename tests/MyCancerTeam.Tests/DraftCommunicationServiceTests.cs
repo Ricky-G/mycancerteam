@@ -1,6 +1,7 @@
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Core.Drafts;
 using MyCancerTeam.Infrastructure.Drafts;
+using MyCancerTeam.Tests.Helpers;
 
 namespace MyCancerTeam.Tests;
 
@@ -20,7 +21,7 @@ public sealed class DraftCommunicationServiceTests
             };
 
             var exporter = new MarkdownDraftExporter(config);
-            var service = new DraftCommunicationService(exporter);
+            var service = new DraftCommunicationService(exporter, StubLlmChatClient.Instance);
 
             var result = await service.CreateDraftAsync(new DraftCommunicationRequest
             {
