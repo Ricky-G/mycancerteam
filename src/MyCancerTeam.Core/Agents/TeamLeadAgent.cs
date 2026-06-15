@@ -1,5 +1,7 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Agents.AI.Workflows;
+using MyCancerTeam.Core.AI;
 using MyCancerTeam.Core.Workflows;
 
 namespace MyCancerTeam.Core.Agents;
@@ -8,16 +10,43 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
 {
     private const decimal MinimumConfidenceLevel = 0.20m;
     private const decimal StandardConfidenceLevel = 0.60m;
+    private const decimal SynthesisedConfidenceLevel = 0.70m;
     private const string TeamLeadSessionIdTemplate = "teamlead-{0}-{1:N}";
     private const string TeamLeadWorkflowInputExecutorId = "teamlead-workflow-input";
 
+    private const string SynthesisSystemPrompt = """
+        You are the Team Lead facilitator of a multi-disciplinary oncology team (MDT). You receive structured viewpoints from several specialist AI agents on the same patient situation.
+
+        Produce ONE unified MDT view that reads as a single coherent clinical opinion, not as a list of separate specialists. Integrate, reconcile, and de-duplicate the inputs. Where specialists disagree, surface the disagreement explicitly. Preserve every distinct fact; do not invent new facts; do not name the individual specialist agents.
+
+        Protect patient privacy: never include the patient's name or other personal identifiers in your output. Refer to the patient only as "the patient". If a name appears in the inputs, replace it with "the patient" (or "[REDACTED]" for any other identifying detail such as contact information).
+
+        Respond with a JSON object containing exactly these fields:
+        {
+          "currentDiagnosis": "<unified patient-friendly description of the current diagnostic picture, 2-5 sentences>",
+          "currentTreatment": "<unified description of the current treatment status and plan, 2-5 sentences>",
+          "openQuestions": ["<MDT-level open question 1>", "<MDT-level open question 2>"],
+          "clinicianQuestions": ["<question to raise with the care team 1>", "<question to raise with the care team 2>", "<question to raise with the care team 3>"],
+          "confidenceLevel": <number between 0.0 and 1.0 representing MDT confidence in this synthesis>
+        }
+        """;
+
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
     private readonly IAgentRegistry _agentRegistry;
     private readonly WorkflowRouter _workflowRouter;
+    private readonly ILlmChatClient? _llmClient;
 
     public TeamLeadAgent(IAgentRegistry agentRegistry, WorkflowRouter workflowRouter)
+        : this(agentRegistry, workflowRouter, null)
+    {
+    }
+
+    public TeamLeadAgent(IAgentRegistry agentRegistry, WorkflowRouter workflowRouter, ILlmChatClient? llmClient)
     {
         _agentRegistry = agentRegistry;
         _workflowRouter = workflowRouter;
+        _llmClient = llmClient;
     }
 
     public AgentRole Role => AgentRole.TeamLead;
@@ -33,6 +62,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         var roles = _workflowRouter.GetRecommendedRoles(request);
         var sessionId = string.Format(TeamLeadSessionIdTemplate, request.WorkflowType, Guid.NewGuid());
         var specialistExecutors = new List<ExecutorBinding>();
+        var engagedAgentNames = new List<string>();
         var workflowInputExecutor = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, WorkflowRequest>(
             (WorkflowRequest input, CancellationToken _) => ValueTask.FromResult(input),
             TeamLeadWorkflowInputExecutorId,
@@ -46,6 +76,8 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             {
                 continue;
             }
+
+            engagedAgentNames.Add(agent.Name);
 
             var executorId = $"agent-{role.ToString().ToLowerInvariant()}";
             var specialistExecutor = ExecutorBindingExtensions.BindAsExecutor<WorkflowRequest, AgentResponse>(
@@ -89,14 +121,6 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
                 .ToList();
         }
 
-        var summaryBuilder = new StringBuilder();
-        summaryBuilder.AppendLine("Team synthesis prepared. Facts, assumptions, and unknowns are separated for clinician discussion.");
-
-        foreach (var response in specialistResponses)
-        {
-            summaryBuilder.AppendLine($"- {response.Role}: {response.Summary}");
-        }
-
         var openQuestions = specialistResponses
             .SelectMany(r => r.OpenQuestions)
             .Distinct()
@@ -111,15 +135,160 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             .SelectMany(r => r.Citations)
             .ToList();
 
+        var engagedAgents = engagedAgentNames
+            .Distinct()
+            .ToList();
+
+        var synthesis = await SynthesizeAsync(request, specialistResponses, cancellationToken);
+        if (synthesis is not null)
+        {
+            return new AgentResponse
+            {
+                Role = Role,
+                Summary = synthesis.CurrentDiagnosis ?? string.Empty,
+                TechnicalSummary = synthesis.CurrentTreatment ?? string.Empty,
+                ConfidenceLevel = synthesis.ConfidenceLevel,
+                OpenQuestions = synthesis.OpenQuestions is null || synthesis.OpenQuestions.Count == 0 ? openQuestions : synthesis.OpenQuestions,
+                SuggestedClinicianQuestions = synthesis.ClinicianQuestions is null || synthesis.ClinicianQuestions.Count == 0 ? suggestions : synthesis.ClinicianQuestions,
+                EngagedAgents = engagedAgents,
+                Citations = citations
+            };
+        }
+
+        var summary = BuildAggregatedText(specialistResponses, r => r.Summary, "Awaiting specialist input.");
+        var technicalSummary = BuildAggregatedText(specialistResponses, r => r.TechnicalSummary, "No specialist treatment notes yet.");
+
         return new AgentResponse
         {
             Role = Role,
-            Summary = summaryBuilder.ToString().Trim(),
-            TechnicalSummary = "Consolidated specialist viewpoints with tracked uncertainties and unresolved issues.",
+            Summary = summary,
+            TechnicalSummary = technicalSummary,
             ConfidenceLevel = specialistResponses.Count == 0 ? MinimumConfidenceLevel : StandardConfidenceLevel,
             OpenQuestions = openQuestions,
             SuggestedClinicianQuestions = suggestions,
+            EngagedAgents = engagedAgents,
             Citations = citations
         };
+    }
+
+    private async Task<SynthesisDto?> SynthesizeAsync(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, CancellationToken cancellationToken)
+    {
+        if (_llmClient is null || specialistResponses.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var userMessage = BuildSynthesisUserMessage(request, specialistResponses);
+            var json = await _llmClient.CompleteAsync(SynthesisSystemPrompt, userMessage, cancellationToken);
+            var parsed = JsonSerializer.Deserialize<SynthesisDto>(json, JsonOptions);
+
+            if (parsed is null
+                || string.IsNullOrWhiteSpace(parsed.CurrentDiagnosis)
+                || string.IsNullOrWhiteSpace(parsed.CurrentTreatment))
+            {
+                return null;
+            }
+
+            parsed.OpenQuestions ??= [];
+            parsed.ClinicianQuestions ??= [];
+            if (parsed.ConfidenceLevel <= 0m)
+            {
+                parsed.ConfidenceLevel = SynthesisedConfidenceLevel;
+            }
+            else if (parsed.ConfidenceLevel > 1m)
+            {
+                parsed.ConfidenceLevel = 1m;
+            }
+
+            return parsed;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string BuildSynthesisUserMessage(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Workflow type: {request.WorkflowType}");
+        builder.AppendLine($"Patient input: {request.UserInput}");
+        builder.AppendLine();
+        builder.AppendLine("Specialist viewpoints (do NOT name these specialists in your output; integrate them into one MDT voice):");
+
+        for (var i = 0; i < specialistResponses.Count; i++)
+        {
+            var response = specialistResponses[i];
+            builder.AppendLine($"## Viewpoint {i + 1} ({response.Role})");
+            if (!string.IsNullOrWhiteSpace(response.Summary))
+            {
+                builder.AppendLine($"- Patient-friendly: {response.Summary.Trim()}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(response.TechnicalSummary))
+            {
+                builder.AppendLine($"- Clinical: {response.TechnicalSummary.Trim()}");
+            }
+
+            if (response.OpenQuestions.Count > 0)
+            {
+                builder.AppendLine("- Open questions:");
+                foreach (var question in response.OpenQuestions)
+                {
+                    builder.AppendLine($"  * {question}");
+                }
+            }
+
+            if (response.SuggestedClinicianQuestions.Count > 0)
+            {
+                builder.AppendLine("- Suggested clinician questions:");
+                foreach (var question in response.SuggestedClinicianQuestions)
+                {
+                    builder.AppendLine($"  * {question}");
+                }
+            }
+
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildAggregatedText(IReadOnlyList<AgentResponse> responses, Func<AgentResponse, string> selector, string emptyMessage)
+    {
+        if (responses.Count == 0)
+        {
+            return emptyMessage;
+        }
+
+        var builder = new StringBuilder();
+        foreach (var response in responses)
+        {
+            var text = selector(response)?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                continue;
+            }
+
+            builder.AppendLine($"- {response.Role}: {text}");
+        }
+
+        var aggregated = builder.ToString().Trim();
+        return string.IsNullOrEmpty(aggregated) ? emptyMessage : aggregated;
+    }
+
+    private sealed class SynthesisDto
+    {
+        public string? CurrentDiagnosis { get; set; }
+        public string? CurrentTreatment { get; set; }
+        public List<string>? OpenQuestions { get; set; }
+        public List<string>? ClinicianQuestions { get; set; }
+        public decimal ConfidenceLevel { get; set; }
     }
 }

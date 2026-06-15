@@ -28,4 +28,7 @@ internal sealed class StubLlmChatClient : ILlmChatClient
 
         return Task.FromResult(json);
     }
+
+    public Task<string> CompleteTextAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
+        => Task.FromResult($"Stub formatted output for: {userMessage}");
 }

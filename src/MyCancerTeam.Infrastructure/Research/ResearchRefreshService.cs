@@ -1,3 +1,4 @@
+using System.Text;
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Core.Research;
 
@@ -22,19 +23,44 @@ public sealed class ResearchRefreshService : IResearchRefreshService
         var generatedUtc = DateTimeOffset.UtcNow;
         var filePath = Path.Combine(_configuration.ResearchFolderPath, $"{generatedUtc:yyyyMMdd-HHmmss}-research-update.md");
 
-        var markdown = $"""
-# Research Update
+        var markdown = new StringBuilder()
+            .AppendLine("# Research Update")
+            .AppendLine()
+            .AppendLine($"- Generated (UTC): {generatedUtc:O}")
+            .AppendLine($"- Schedule setting: {_configuration.DailyResearchRefreshSchedule ?? "not set"}")
+            .AppendLine()
+            .AppendLine("## Patient-Friendly Summary")
+            .AppendLine(update.PatientFriendlySummary)
+            .AppendLine()
+            .AppendLine("## Technical Summary")
+            .AppendLine(update.TechnicalSummary);
 
-- Generated (UTC): {generatedUtc:O}
-- Schedule setting: {_configuration.DailyResearchRefreshSchedule ?? "not set"}
+        if (update.EvidenceGapNotes.Count > 0)
+        {
+            markdown.AppendLine()
+                .AppendLine("## Evidence Gaps")
+                .AppendLine();
 
-## Patient-Friendly Summary
-{update.PatientFriendlySummary}
+            foreach (var note in update.EvidenceGapNotes)
+            {
+                markdown.AppendLine($"- {note}");
+            }
+        }
 
-## Technical Summary
-{update.TechnicalSummary}
-""";
+        if (update.Citations.Count > 0)
+        {
+            markdown.AppendLine()
+                .AppendLine("## Citations")
+                .AppendLine();
 
-        await File.WriteAllTextAsync(filePath, markdown, cancellationToken);
+            foreach (var citation in update.Citations)
+            {
+                markdown.AppendLine($"- [{citation.Title}]({citation.Url}) — {citation.SourceName} ({citation.EvidenceLevel})");
+            }
+        }
+
+        var fileContent = markdown.ToString();
+
+        await File.WriteAllTextAsync(filePath, fileContent, cancellationToken);
     }
 }

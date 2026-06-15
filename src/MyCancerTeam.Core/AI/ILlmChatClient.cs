@@ -9,4 +9,6 @@ namespace MyCancerTeam.Core.AI;
 public interface ILlmChatClient
 {
     Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default);
+
+    Task<string> CompleteTextAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default);
 }

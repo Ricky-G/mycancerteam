@@ -15,11 +15,17 @@ public sealed class AzureOpenAiChatClient : ILlmChatClient
         _chatClient = openAiClient.GetChatClient(context.DeploymentName);
     }
 
-    public async Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
+    public Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
+        => CompleteInternalAsync(systemPrompt, userMessage, ChatResponseFormat.CreateJsonObjectFormat(), cancellationToken);
+
+    public Task<string> CompleteTextAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
+        => CompleteInternalAsync(systemPrompt, userMessage, ChatResponseFormat.CreateTextFormat(), cancellationToken);
+
+    private async Task<string> CompleteInternalAsync(string systemPrompt, string userMessage, ChatResponseFormat responseFormat, CancellationToken cancellationToken)
     {
         var options = new ChatCompletionOptions
         {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = responseFormat
         };
 
         var completion = await _chatClient.CompleteChatAsync(

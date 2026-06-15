@@ -63,6 +63,10 @@ public sealed class ConfigurationLoader
         configuration.ResearchFolderPath = Get("MYCANCERTEAM_RESEARCH_FOLDER", configuration.ResearchFolderPath);
         configuration.OurNotesFolderPath = Get("MYCANCERTEAM_OUR_NOTES_FOLDER", configuration.OurNotesFolderPath);
         configuration.DailyResearchRefreshSchedule = GetNullable("MYCANCERTEAM_DAILY_RESEARCH_REFRESH_SCHEDULE", configuration.DailyResearchRefreshSchedule);
+        configuration.BingWebSearchEndpoint = GetNullable("MYCANCERTEAM_BING_WEB_SEARCH_ENDPOINT", configuration.BingWebSearchEndpoint);
+        configuration.BingWebSearchKey = GetNullable("MYCANCERTEAM_BING_WEB_SEARCH_KEY", configuration.BingWebSearchKey);
+        configuration.SerpApiEndpoint = GetNullable("MYCANCERTEAM_SERPAPI_ENDPOINT", configuration.SerpApiEndpoint);
+        configuration.SerpApiKey = GetNullable("MYCANCERTEAM_SERPAPI_KEY", configuration.SerpApiKey);
 
         static string Get(string key, string fallback)
             => Environment.GetEnvironmentVariable(key) ?? fallback;

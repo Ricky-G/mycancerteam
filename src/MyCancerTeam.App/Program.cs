@@ -9,6 +9,11 @@ using MyCancerTeam.Infrastructure.Notes;
 using MyCancerTeam.Infrastructure.Research;
 
 var rootPath = ResolveRepositoryRoot();
+
+// Promote a local .env file (if present) into process environment variables so the
+// configuration loader's environment overrides are honoured during local development.
+DotEnvLoader.Load(Path.Combine(rootPath, ".env"));
+
 var configurationLoader = new ConfigurationLoader();
 var configuration = configurationLoader.Load(rootPath);
 configurationLoader.EnsureLocalDirectories(configuration);

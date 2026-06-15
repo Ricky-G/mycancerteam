@@ -46,8 +46,8 @@ Cancer care is complex and stressful. This project helps patients/support people
 
 ## Quick start
 1. Clone the repo.
-2. Copy `.env.example` into your environment setup (do not commit `.env`).
-3. Update endpoint/deployment placeholders.
+2. Copy `.env.example` to `.env` at the repo root and fill in your Azure OpenAI endpoint/deployment.
+3. The app auto-loads `.env`; environment variables still override file values.
 4. Ensure Azure auth:
    - `az login`
    - If needed: `az account set --subscription <subscription-id>`
@@ -57,8 +57,9 @@ Cancer care is complex and stressful. This project helps patients/support people
 
 ## Configuration
 Configuration is loaded from:
-1. `config/environments/<env>/appsettings.json`
-2. environment variables (`MYCANCERTEAM_*`) overriding file values.
+1. `.env` at the repo root, if present
+2. `config/environments/<env>/appsettings.json`
+3. environment variables (`MYCANCERTEAM_*`) overriding file values.
 
 Environment selector:
 - `MYCANCERTEAM_ENVIRONMENT=dev|test|prod`
@@ -72,6 +73,8 @@ Core vars:
 - `MYCANCERTEAM_RESEARCH_FOLDER`
 - `MYCANCERTEAM_OUR_NOTES_FOLDER`
 - `MYCANCERTEAM_DAILY_RESEARCH_REFRESH_SCHEDULE` (optional)
+- `MYCANCERTEAM_BING_WEB_SEARCH_ENDPOINT` / `MYCANCERTEAM_BING_WEB_SEARCH_KEY` (optional)
+- `MYCANCERTEAM_SERPAPI_ENDPOINT` / `MYCANCERTEAM_SERPAPI_KEY` (optional; can query Google Scholar-style results through SerpAPI)
 
 ## Local folder setup
 The app auto-creates four local folders under `.local/` by default:
@@ -103,7 +106,7 @@ Scanned/image-only PDFs have no embedded text, so nothing can be extracted; thes
 - Radiation and medication plan workflow routing
 - Symptom support routing
 - Insurance/financial routing
-- Research monitoring routing
+- Research monitoring routing (live PubMed + ClinicalTrials.gov evidence when available)
 - Global treatment access routing
 - Draft communication generation to local markdown
 

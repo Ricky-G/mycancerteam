@@ -49,8 +49,7 @@ public sealed class InteractiveSessionHost
 
         PrintWelcome();
 
-        var existing = _scanner.MarkExistingNotesAsSeen();
-        Log($"Watching {_scanner.WatchedFolders.Count} folder(s) for new notes. {existing} existing note file(s) ignored; only newly added notes are processed.");
+        Log($"Watching {_scanner.WatchedFolders.Count} folder(s) for notes. Existing notes are analyzed on first run; newly added notes are processed as they arrive.");
 
         if (!string.IsNullOrWhiteSpace(initialInput))
         {
