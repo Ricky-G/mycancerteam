@@ -1,10 +1,12 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using MyCancerTeam.Core.Agents;
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Core.Drafts;
 using MyCancerTeam.Core.Notes;
 using MyCancerTeam.Core.Workflows;
+using MyCancerTeam.Infrastructure.Notes;
 
 namespace MyCancerTeam.App;
 
@@ -15,11 +17,13 @@ namespace MyCancerTeam.App;
 public sealed class InteractiveSessionHost
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
+    private static readonly Regex RolePrefixPattern = new(@"^[A-Z][A-Za-z]+:\s+", RegexOptions.Compiled);
 
     private readonly INoteStore _noteStore;
     private readonly ITeamLeadAgent _teamLeadAgent;
     private readonly IDraftCommunicationService _draftService;
     private readonly IFolderNoteScanner _scanner;
+    private readonly TeamLeadSummaryComposer _summaryComposer;
     private readonly AppConfiguration _configuration;
     private readonly TimeSpan _pollInterval;
     private readonly object _consoleLock = new();
@@ -29,6 +33,7 @@ public sealed class InteractiveSessionHost
         ITeamLeadAgent teamLeadAgent,
         IDraftCommunicationService draftService,
         IFolderNoteScanner scanner,
+        TeamLeadSummaryComposer summaryComposer,
         AppConfiguration configuration,
         TimeSpan? pollInterval = null)
     {
@@ -36,6 +41,7 @@ public sealed class InteractiveSessionHost
         _teamLeadAgent = teamLeadAgent;
         _draftService = draftService;
         _scanner = scanner;
+        _summaryComposer = summaryComposer;
         _configuration = configuration;
         _pollInterval = pollInterval ?? DefaultPollInterval;
     }
@@ -208,7 +214,7 @@ public sealed class InteractiveSessionHost
 
         Log($"Shared notes updated at: {_configuration.SharedNotesFilePath}");
 
-        var summary = BuildSummary(item, response);
+        var summary = await _summaryComposer.ComposeAsync(updatedNotes, item.Source, item.Input, response, cancellationToken);
         await _noteStore.WriteSummaryAsync(summary, cancellationToken);
 
         Log($"Summary updated at: {_configuration.SummaryFilePath}");
@@ -253,43 +259,6 @@ public sealed class InteractiveSessionHost
                 }
             }
         }
-    }
-
-    private static string BuildSummary(WorkItem item, AgentResponse response)
-    {
-        var summary = new StringBuilder();
-        summary.AppendLine("# MyCancerTeam Summary");
-        summary.AppendLine();
-        summary.AppendLine($"_Last updated: {DateTimeOffset.UtcNow:O}_");
-        summary.AppendLine();
-        summary.AppendLine($"**Source:** {item.Source}");
-        summary.AppendLine($"**Input:** {item.Input}");
-        summary.AppendLine($"**Confidence:** {response.ConfidenceLevel:P0}");
-        summary.AppendLine();
-        summary.AppendLine("## Team Lead Summary");
-        summary.AppendLine(response.Summary);
-
-        if (response.OpenQuestions.Count > 0)
-        {
-            summary.AppendLine();
-            summary.AppendLine("## Open Questions");
-            foreach (var question in response.OpenQuestions)
-            {
-                summary.AppendLine($"- {question}");
-            }
-        }
-
-        if (response.SuggestedClinicianQuestions.Count > 0)
-        {
-            summary.AppendLine();
-            summary.AppendLine("## Suggested Clinician Questions");
-            foreach (var question in response.SuggestedClinicianQuestions)
-            {
-                summary.AppendLine($"- {question}");
-            }
-        }
-
-        return summary.ToString();
     }
 
     private static string BuildUpdatedNotes(string sharedNotes, WorkItem item, AgentResponse response)

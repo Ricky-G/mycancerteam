@@ -76,6 +76,51 @@ public sealed class TeamLeadAgentSynthesisTests
         Assert.Contains("MedicalOncologist: Med onc technical.", response.TechnicalSummary);
     }
 
+    [Fact]
+    public async Task CoordinateAsync_FeedsPriorSummaryAndOpenQuestionsIntoSynthesis()
+    {
+        var registry = new AgentRegistry();
+        registry.Register(new StubSpecialist(AgentRole.PatientOwner, "Patient Owner Agent",
+            "Pathology now confirmed.", "Grade established."));
+        registry.Register(new StubSpecialist(AgentRole.MedicalOncologist, "Medical Oncologist Agent",
+            "Plan unchanged.", "Adjuvant chemo confirmed."));
+
+        var llm = new SynthesisingChatClient("""
+            {
+              "currentDiagnosis": "Stage II disease with confirmed pathology.",
+              "currentTreatment": "Adjuvant chemotherapy confirmed.",
+              "openQuestions": [],
+              "clinicianQuestions": ["Any new questions?"],
+              "confidenceLevel": 0.8
+            }
+            """);
+
+        var teamLead = new TeamLeadAgent(registry, new WorkflowRouter(), llm);
+
+        var sharedNotes =
+            """
+            ## Update 2026-01-01T00:00:00Z
+            Source: Interactive input
+            User input: first
+
+            ### Team Lead Summary
+            Stage II disease under review.
+
+            ### Open Questions
+            - Confirm final pathology grade.
+            """;
+
+        var response = await teamLead.CoordinateAsync(
+            new WorkflowRequest { WorkflowType = WorkflowType.GeneralUpdate, UserInput = "Pathology results in." },
+            sharedNotes);
+
+        // The synthesis prompt must surface the prior state so previously open questions can be resolved.
+        Assert.Contains("Confirm final pathology grade.", llm.LastUserMessage);
+        Assert.Contains("Stage II disease under review.", llm.LastUserMessage);
+        // The LLM resolved the prior question; no stale open questions should be carried forward.
+        Assert.Empty(response.OpenQuestions);
+    }
+
     private sealed class StubSpecialist : IAgent
     {
         private readonly string _summary;

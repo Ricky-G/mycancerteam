@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Agents.AI.Workflows;
 using MyCancerTeam.Core.AI;
 using MyCancerTeam.Core.Workflows;
@@ -18,6 +19,8 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         You are the Team Lead facilitator of a multi-disciplinary oncology team (MDT). You receive structured viewpoints from several specialist AI agents on the same patient situation.
 
         Produce ONE unified MDT view that reads as a single coherent clinical opinion, not as a list of separate specialists. Integrate, reconcile, and de-duplicate the inputs. Where specialists disagree, surface the disagreement explicitly. Preserve every distinct fact; do not invent new facts; do not name the individual specialist agents.
+
+        You may also receive the previously recorded MDT state (prior diagnosis, prior treatment, and prior open questions). Treat the new specialist viewpoints as the latest information arriving over time. As more information comes in you MUST resolve and remove previously open questions that are now answered: only carry forward open questions that remain genuinely unresolved, and add new ones only when the new information raises them. Do the same for clinician questions. The diagnosis and treatment should reflect the most current, complete picture, building on the prior state rather than discarding it.
 
         Protect patient privacy: never include the patient's name or other personal identifiers in your output. Refer to the patient only as "the patient". If a name appears in the inputs, replace it with "the patient" (or "[REDACTED]" for any other identifying detail such as contact information).
 
@@ -139,7 +142,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             .Distinct()
             .ToList();
 
-        var synthesis = await SynthesizeAsync(request, specialistResponses, cancellationToken);
+        var synthesis = await SynthesizeAsync(request, specialistResponses, sharedNotes, cancellationToken);
         if (synthesis is not null)
         {
             return new AgentResponse
@@ -171,7 +174,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         };
     }
 
-    private async Task<SynthesisDto?> SynthesizeAsync(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, CancellationToken cancellationToken)
+    private async Task<SynthesisDto?> SynthesizeAsync(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, string sharedNotes, CancellationToken cancellationToken)
     {
         if (_llmClient is null || specialistResponses.Count == 0)
         {
@@ -180,7 +183,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
 
         try
         {
-            var userMessage = BuildSynthesisUserMessage(request, specialistResponses);
+            var userMessage = BuildSynthesisUserMessage(request, specialistResponses, sharedNotes);
             var json = await _llmClient.CompleteAsync(SynthesisSystemPrompt, userMessage, cancellationToken);
             var parsed = JsonSerializer.Deserialize<SynthesisDto>(json, JsonOptions);
 
@@ -214,12 +217,34 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         }
     }
 
-    private static string BuildSynthesisUserMessage(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses)
+    private static string BuildSynthesisUserMessage(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, string sharedNotes)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"Workflow type: {request.WorkflowType}");
         builder.AppendLine($"Patient input: {request.UserInput}");
         builder.AppendLine();
+
+        var prior = ExtractPriorState(sharedNotes);
+        if (prior is not null)
+        {
+            builder.AppendLine("Previously recorded MDT state (build on this; resolve and drop questions now answered by the new viewpoints below):");
+            if (!string.IsNullOrWhiteSpace(prior.Summary))
+            {
+                builder.AppendLine($"- Prior diagnosis/summary: {prior.Summary.Trim()}");
+            }
+
+            if (prior.OpenQuestions.Count > 0)
+            {
+                builder.AppendLine("- Previously open questions (keep only those still unresolved):");
+                foreach (var question in prior.OpenQuestions)
+                {
+                    builder.AppendLine($"  * {question}");
+                }
+            }
+
+            builder.AppendLine();
+        }
+
         builder.AppendLine("Specialist viewpoints (do NOT name these specialists in your output; integrate them into one MDT voice):");
 
         for (var i = 0; i < specialistResponses.Count; i++)
@@ -282,6 +307,64 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         var aggregated = builder.ToString().Trim();
         return string.IsNullOrEmpty(aggregated) ? emptyMessage : aggregated;
     }
+
+    private static PriorState? ExtractPriorState(string sharedNotes)
+    {
+        if (string.IsNullOrWhiteSpace(sharedNotes))
+        {
+            return null;
+        }
+
+        // Walk update blocks newest-first so the prior state reflects the most recent run.
+        var updates = Regex.Matches(sharedNotes, @"(?ms)^## Update .*?(?=^## Update |\z)")
+            .Cast<Match>()
+            .Reverse()
+            .ToList();
+
+        if (updates.Count == 0)
+        {
+            return null;
+        }
+
+        var summary = updates
+            .Select(update => ExtractSection(update.Value, "Team Lead Summary")
+                ?? ExtractSection(update.Value, "Current Diagnosis"))
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
+
+        var openQuestions = updates
+            .Select(update => ExtractSectionLines(update.Value, "Open Questions"))
+            .FirstOrDefault(lines => lines.Count > 0) ?? [];
+
+        if (string.IsNullOrWhiteSpace(summary) && openQuestions.Count == 0)
+        {
+            return null;
+        }
+
+        return new PriorState(summary, openQuestions);
+    }
+
+    private static string? ExtractSection(string block, string heading)
+    {
+        var lines = ExtractSectionLines(block, heading);
+        return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
+    }
+
+    private static IReadOnlyList<string> ExtractSectionLines(string block, string heading)
+    {
+        var match = Regex.Match(block, $@"(?ms)^### {Regex.Escape(heading)}\s*(?<content>.*?)(?=^### |\z)");
+        if (!match.Success)
+        {
+            return [];
+        }
+
+        return match.Groups["content"].Value
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.StartsWith("- ") ? line[2..].Trim() : line.Trim())
+            .Where(line => line.Length > 0)
+            .ToList();
+    }
+
+    private sealed record PriorState(string Summary, IReadOnlyList<string> OpenQuestions);
 
     private sealed class SynthesisDto
     {

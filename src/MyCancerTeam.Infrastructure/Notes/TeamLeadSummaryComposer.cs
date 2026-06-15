@@ -14,9 +14,9 @@ public sealed class TeamLeadSummaryComposer
         Re-render it as a clean, easy-to-scan Markdown document. Rules:
         - Preserve every distinct fact; do not invent or omit information.
         - Use the exact headings: "# MyCancerTeam Summary", "## Current Diagnosis", "## Current Treatment", "## Next Steps", "## Engaged Agents".
-        - Current Diagnosis and Current Treatment must read as ONE unified MDT opinion. Write flowing prose (1-4 short paragraphs) or a small number of unattributed bullet points.
+        - Format each section's content as concise bullet points (use sub-bullets where needed to group related details). Use short paragraphs only when a bullet-point list would feel unnatural.
         - NEVER attribute statements to individual specialists or roles (no "PatientOwner:", "Radiologist:", "Research Oncology:" style prefixes). The team speaks with a single voice.
-        - Next Steps must be a bulleted list.
+        - Next Steps must be a bulleted list of actionable items or outstanding questions.
         - Engaged Agents must be a single comma-separated line (this is the ONLY place roles are named).
         - Keep medical caveats and uncertainties intact.
         - Protect patient privacy: never include the patient's name or other personal identifiers. Refer to the patient only as "the patient", and replace any name that appears in the input with "the patient".
