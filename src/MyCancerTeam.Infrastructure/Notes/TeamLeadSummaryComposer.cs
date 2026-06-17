@@ -30,9 +30,18 @@ public sealed class TeamLeadSummaryComposer
         _llmClient = llmClient;
     }
 
-    public async Task<string> ComposeAsync(string previousSummary, string source, string input, AgentResponse response, CancellationToken cancellationToken = default)
+    public Task<string> ComposeAsync(string previousSummary, string source, string input, AgentResponse response, CancellationToken cancellationToken = default)
+        => ComposeAsync(previousSummary, source, input, response, includeDiagnosisContribution: true, cancellationToken);
+
+    public async Task<string> ComposeAsync(
+        string previousSummary,
+        string source,
+        string input,
+        AgentResponse response,
+        bool includeDiagnosisContribution,
+        CancellationToken cancellationToken = default)
     {
-        var snapshot = BuildSnapshot(previousSummary, response);
+        var snapshot = BuildSnapshot(previousSummary, response, includeDiagnosisContribution);
         var deterministic = RenderDeterministic(snapshot);
 
         if (_llmClient is null)
@@ -62,33 +71,43 @@ public sealed class TeamLeadSummaryComposer
     }
 
     public static string Compose(string previousSummary, string source, string input, AgentResponse response)
+        => Compose(previousSummary, source, input, response, includeDiagnosisContribution: true);
+
+    public static string Compose(
+        string previousSummary,
+        string source,
+        string input,
+        AgentResponse response,
+        bool includeDiagnosisContribution)
     {
-        var snapshot = BuildSnapshot(previousSummary, response);
+        var snapshot = BuildSnapshot(previousSummary, response, includeDiagnosisContribution);
         return RenderDeterministic(snapshot);
     }
 
     // The latest synthesized response is the authoritative current state (the agent already
     // folded the previous summary into it). The previous summary is only consulted as a fallback
     // for sections the response left empty, so we never regress an already-known fact.
-    private static SummarySnapshot BuildSnapshot(string previousSummary, AgentResponse response)
+    private static SummarySnapshot BuildSnapshot(string previousSummary, AgentResponse response, bool includeDiagnosisContribution)
     {
         var current = CreateSnapshotFromResponse(response);
         var prior = ParseSnapshot(previousSummary);
 
-        if (prior is null)
-        {
-            return current;
-        }
-
-        var diagnosis = IsUseful(current.CurrentDiagnosis) ? current.CurrentDiagnosis : prior.CurrentDiagnosis;
-        var treatment = IsUseful(current.CurrentTreatment) ? current.CurrentTreatment : prior.CurrentTreatment;
+        var diagnosis = includeDiagnosisContribution
+            ? (IsUseful(current.CurrentDiagnosis)
+                ? current.CurrentDiagnosis
+                : prior?.CurrentDiagnosis ?? "Not yet established.")
+            : prior?.CurrentDiagnosis ?? "Not yet established.";
+        var treatment = IsUseful(current.CurrentTreatment)
+            ? current.CurrentTreatment
+            : prior?.CurrentTreatment ?? "Not yet established.";
         var nextSteps = current.NextSteps.Count > 0 && current.NextSteps.Any(IsUseful)
             ? current.NextSteps
-            : prior.NextSteps;
+            : prior?.NextSteps ?? ["Continue clinician follow-up."];
 
         var engagedAgents = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var agent in current.EngagedAgents.Concat(prior.EngagedAgents))
+        var priorEngagedAgents = prior?.EngagedAgents ?? [];
+        foreach (var agent in current.EngagedAgents.Concat(priorEngagedAgents))
         {
             if (seen.Add(agent))
             {

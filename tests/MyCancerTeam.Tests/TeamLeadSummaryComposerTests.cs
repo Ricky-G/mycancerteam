@@ -52,6 +52,32 @@ public sealed class TeamLeadSummaryComposerTests
     }
 
     [Fact]
+    public async Task ComposeAsync_ExcludingDiagnosisContribution_PreservesPriorDiagnosis()
+    {
+        var composer = new TeamLeadSummaryComposer();
+        var response = new AgentResponse
+        {
+            Role = AgentRole.TeamLead,
+            Summary = "Insurance note mentions prior staging details.",
+            TechnicalSummary = "Prior authorization submitted.",
+            ConfidenceLevel = 0.8m,
+            SuggestedClinicianQuestions = ["Confirm insurer timeline?"],
+            EngagedAgents = ["Patient Owner Agent"]
+        };
+
+        var summary = await composer.ComposeAsync(
+            PreviousSummary(),
+            "File: C:\\repo\\.local\\non-medical-notes\\insurance.txt",
+            "Insurance update",
+            response,
+            includeDiagnosisContribution: false);
+
+        Assert.Contains("Stage II disease being reviewed.", summary);
+        Assert.DoesNotContain("Insurance note mentions prior staging details.", summary);
+        Assert.Contains("Prior authorization submitted.", summary);
+    }
+
+    [Fact]
     public async Task ComposeAsync_WithLlm_UsesLlmFormattedOutput()
     {
         var llm = new RecordingChatClient("""
