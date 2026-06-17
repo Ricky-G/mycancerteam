@@ -87,4 +87,31 @@ public sealed class MarkdownNoteStoreTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public async Task NoteStore_ReadSummaryAsync_ShouldReturnEmptyWhenMissingAndRoundTrip()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"mycancerteam-summary-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        var config = new AppConfiguration
+        {
+            LocalWorkingFolderPath = root,
+            OurNotesFolderPath = Path.Combine(root, "our-notes")
+        };
+
+        try
+        {
+            var store = new MarkdownNoteStore(config);
+
+            Assert.Equal(string.Empty, await store.ReadSummaryAsync());
+
+            await store.WriteSummaryAsync("# Summary\n\nState.");
+            Assert.Equal("# Summary\n\nState.", await store.ReadSummaryAsync());
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

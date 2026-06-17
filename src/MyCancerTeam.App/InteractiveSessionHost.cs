@@ -1,10 +1,12 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using MyCancerTeam.Core.Agents;
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Core.Drafts;
 using MyCancerTeam.Core.Notes;
 using MyCancerTeam.Core.Workflows;
+using MyCancerTeam.Infrastructure.Notes;
 
 namespace MyCancerTeam.App;
 
@@ -15,11 +17,13 @@ namespace MyCancerTeam.App;
 public sealed class InteractiveSessionHost
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
+    private static readonly Regex RolePrefixPattern = new(@"^[A-Z][A-Za-z]+:\s+", RegexOptions.Compiled);
 
     private readonly INoteStore _noteStore;
     private readonly ITeamLeadAgent _teamLeadAgent;
     private readonly IDraftCommunicationService _draftService;
     private readonly IFolderNoteScanner _scanner;
+    private readonly TeamLeadSummaryComposer _summaryComposer;
     private readonly AppConfiguration _configuration;
     private readonly TimeSpan _pollInterval;
     private readonly object _consoleLock = new();
@@ -29,6 +33,7 @@ public sealed class InteractiveSessionHost
         ITeamLeadAgent teamLeadAgent,
         IDraftCommunicationService draftService,
         IFolderNoteScanner scanner,
+        TeamLeadSummaryComposer summaryComposer,
         AppConfiguration configuration,
         TimeSpan? pollInterval = null)
     {
@@ -36,6 +41,7 @@ public sealed class InteractiveSessionHost
         _teamLeadAgent = teamLeadAgent;
         _draftService = draftService;
         _scanner = scanner;
+        _summaryComposer = summaryComposer;
         _configuration = configuration;
         _pollInterval = pollInterval ?? DefaultPollInterval;
     }
@@ -49,8 +55,7 @@ public sealed class InteractiveSessionHost
 
         PrintWelcome();
 
-        var existing = _scanner.MarkExistingNotesAsSeen();
-        Log($"Watching {_scanner.WatchedFolders.Count} folder(s) for new notes. {existing} existing note file(s) ignored; only newly added notes are processed.");
+        Log($"Watching {_scanner.WatchedFolders.Count} folder(s) for notes. Existing notes are analyzed on first run; newly added notes are processed as they arrive.");
 
         if (!string.IsNullOrWhiteSpace(initialInput))
         {
@@ -192,7 +197,11 @@ public sealed class InteractiveSessionHost
 
     private async Task ProcessAsync(WorkItem item, CancellationToken cancellationToken)
     {
-        var sharedNotes = await _noteStore.ReadSharedNotesAsync(cancellationToken);
+        // The previous summary is the carried-forward state of the case; the shared notes file is
+        // an append-only audit log. New information is analyzed in conjunction with the previous
+        // summary, the analysis is appended to the audit log, and the summary is regenerated.
+        var previousSummary = await _noteStore.ReadSummaryAsync(cancellationToken);
+        var auditLog = await _noteStore.ReadSharedNotesAsync(cancellationToken);
 
         var request = new WorkflowRequest
         {
@@ -200,16 +209,16 @@ public sealed class InteractiveSessionHost
             UserInput = item.Input
         };
 
-        var response = await _teamLeadAgent.CoordinateAsync(request, sharedNotes, cancellationToken);
+        var response = await _teamLeadAgent.CoordinateAsync(request, previousSummary, cancellationToken);
 
         PrintResponse(item, response);
 
-        var updatedNotes = BuildUpdatedNotes(sharedNotes, item, response);
+        var updatedNotes = BuildUpdatedNotes(auditLog, item, response);
         await _noteStore.WriteSharedNotesAsync(updatedNotes, cancellationToken);
 
         Log($"Shared notes updated at: {_configuration.SharedNotesFilePath}");
 
-        var summary = BuildSummary(item, response);
+        var summary = await _summaryComposer.ComposeAsync(previousSummary, item.Source, item.Input, response, cancellationToken);
         await _noteStore.WriteSummaryAsync(summary, cancellationToken);
 
         Log($"Summary updated at: {_configuration.SummaryFilePath}");
@@ -256,43 +265,6 @@ public sealed class InteractiveSessionHost
         }
     }
 
-    private static string BuildSummary(WorkItem item, AgentResponse response)
-    {
-        var summary = new StringBuilder();
-        summary.AppendLine("# MyCancerTeam Summary");
-        summary.AppendLine();
-        summary.AppendLine($"_Last updated: {DateTimeOffset.UtcNow:O}_");
-        summary.AppendLine();
-        summary.AppendLine($"**Source:** {item.Source}");
-        summary.AppendLine($"**Input:** {item.Input}");
-        summary.AppendLine($"**Confidence:** {response.ConfidenceLevel:P0}");
-        summary.AppendLine();
-        summary.AppendLine("## Team Lead Summary");
-        summary.AppendLine(response.Summary);
-
-        if (response.OpenQuestions.Count > 0)
-        {
-            summary.AppendLine();
-            summary.AppendLine("## Open Questions");
-            foreach (var question in response.OpenQuestions)
-            {
-                summary.AppendLine($"- {question}");
-            }
-        }
-
-        if (response.SuggestedClinicianQuestions.Count > 0)
-        {
-            summary.AppendLine();
-            summary.AppendLine("## Suggested Clinician Questions");
-            foreach (var question in response.SuggestedClinicianQuestions)
-            {
-                summary.AppendLine($"- {question}");
-            }
-        }
-
-        return summary.ToString();
-    }
-
     private static string BuildUpdatedNotes(string sharedNotes, WorkItem item, AgentResponse response)
     {
         var updatedNotes = new StringBuilder();
@@ -305,9 +277,30 @@ public sealed class InteractiveSessionHost
         updatedNotes.AppendLine($"## Update {DateTimeOffset.UtcNow:O}");
         updatedNotes.AppendLine($"Source: {item.Source}");
         updatedNotes.AppendLine($"User input: {item.Input}");
+        updatedNotes.AppendLine($"Confidence: {response.ConfidenceLevel:P0}");
         updatedNotes.AppendLine();
-        updatedNotes.AppendLine("### Team Lead Summary");
-        updatedNotes.AppendLine(response.Summary);
+
+        updatedNotes.AppendLine("### Current Diagnosis");
+        updatedNotes.AppendLine(string.IsNullOrWhiteSpace(response.Summary) ? "Not yet established." : response.Summary.Trim());
+        updatedNotes.AppendLine();
+
+        updatedNotes.AppendLine("### Current Treatment");
+        updatedNotes.AppendLine(string.IsNullOrWhiteSpace(response.TechnicalSummary) ? "Not yet established." : response.TechnicalSummary.Trim());
+
+        var nextSteps = response.SuggestedClinicianQuestions
+            .Concat(response.OpenQuestions)
+            .Where(step => !string.IsNullOrWhiteSpace(step))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (nextSteps.Count > 0)
+        {
+            updatedNotes.AppendLine();
+            updatedNotes.AppendLine("### Next Steps");
+            foreach (var nextStep in nextSteps)
+            {
+                updatedNotes.AppendLine($"- {nextStep}");
+            }
+        }
 
         if (response.OpenQuestions.Count > 0)
         {
@@ -316,6 +309,16 @@ public sealed class InteractiveSessionHost
             foreach (var openQuestion in response.OpenQuestions)
             {
                 updatedNotes.AppendLine($"- {openQuestion}");
+            }
+        }
+
+        if (response.EngagedAgents.Count > 0)
+        {
+            updatedNotes.AppendLine();
+            updatedNotes.AppendLine("### Engaged Agents");
+            foreach (var agent in response.EngagedAgents)
+            {
+                updatedNotes.AppendLine($"- {agent}");
             }
         }
 

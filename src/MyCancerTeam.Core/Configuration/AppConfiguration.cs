@@ -21,6 +21,11 @@ public sealed class AppConfiguration
 
     public string? DailyResearchRefreshSchedule { get; set; }
 
+    public string? BingWebSearchEndpoint { get; set; }
+    public string? BingWebSearchKey { get; set; }
+    public string? SerpApiEndpoint { get; set; }
+    public string? SerpApiKey { get; set; }
+
     /// <summary>The shared notes markdown file, stored within <see cref="OurNotesFolderPath"/>.</summary>
     public string SharedNotesFilePath => Path.Combine(OurNotesFolderPath, "notes.md");
 

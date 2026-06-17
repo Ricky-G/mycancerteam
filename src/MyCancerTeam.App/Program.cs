@@ -9,6 +9,11 @@ using MyCancerTeam.Infrastructure.Notes;
 using MyCancerTeam.Infrastructure.Research;
 
 var rootPath = ResolveRepositoryRoot();
+
+// Promote a local .env file (if present) into process environment variables so the
+// configuration loader's environment overrides are honoured during local development.
+DotEnvLoader.Load(Path.Combine(rootPath, ".env"));
+
 var configurationLoader = new ConfigurationLoader();
 var configuration = configurationLoader.Load(rootPath);
 configurationLoader.EnsureLocalDirectories(configuration);
@@ -35,7 +40,7 @@ registry.Register(new SpecialistAgent(AgentRole.SocialWorker, "Social Worker / C
 registry.Register(new SpecialistAgent(AgentRole.AdminLogistics, "Admin / Logistics Agent", llmClient));
 registry.Register(new PhysicalFitnessAgent());
 
-var teamLeadAgent = new TeamLeadAgent(registry, new WorkflowRouter());
+var teamLeadAgent = new TeamLeadAgent(registry, new WorkflowRouter(), llmClient);
 registry.Register(teamLeadAgent);
 
 using var cts = new CancellationTokenSource();
@@ -47,7 +52,9 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 var initialInput = args.Length > 0 ? string.Join(' ', args) : null;
 
-var host = new InteractiveSessionHost(noteStore, teamLeadAgent, draftService, scanner, configuration);
+var summaryComposer = new TeamLeadSummaryComposer(llmClient);
+
+var host = new InteractiveSessionHost(noteStore, teamLeadAgent, draftService, scanner, summaryComposer, configuration);
 await host.RunAsync(cts, initialInput);
 
 static string ResolveRepositoryRoot()

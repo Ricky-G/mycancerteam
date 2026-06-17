@@ -1,7 +1,10 @@
 using MyCancerTeam.Infrastructure.Configuration;
 
+using MyCancerTeam.Tests.Helpers;
+
 namespace MyCancerTeam.Tests;
 
+[Collection("Environment variable tests")]
 public sealed class ConfigurationLoaderTests
 {
     [Fact]

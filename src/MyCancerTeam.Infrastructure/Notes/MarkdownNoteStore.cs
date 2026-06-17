@@ -43,6 +43,16 @@ public sealed class MarkdownNoteStore : INoteStore
         await File.WriteAllTextAsync(path, content, cancellationToken);
     }
 
+    public async Task<string> ReadSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_configuration.SummaryFilePath))
+        {
+            return string.Empty;
+        }
+
+        return await File.ReadAllTextAsync(_configuration.SummaryFilePath, cancellationToken);
+    }
+
     public async Task WriteSummaryAsync(string content, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_configuration.LocalWorkingFolderPath);

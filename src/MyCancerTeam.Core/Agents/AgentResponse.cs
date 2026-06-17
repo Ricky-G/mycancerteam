@@ -10,5 +10,6 @@ public sealed class AgentResponse
     public decimal ConfidenceLevel { get; init; }
     public IReadOnlyList<string> SuggestedClinicianQuestions { get; init; } = [];
     public IReadOnlyList<string> OpenQuestions { get; init; } = [];
+    public IReadOnlyList<string> EngagedAgents { get; init; } = [];
     public IReadOnlyList<CitationMetadata> Citations { get; init; } = [];
 }
