@@ -27,4 +27,4 @@ jobs:
         run: dotnet build MyCancerTeam.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test MyCancerTeam.slnx --no-build --configuration Release --verbosity normal
+        run: dotnet test MyCancerTeam.slnx --no-build --no-restore --configuration Release --verbosity normal
