@@ -1,3 +1,5 @@
+using System.Text.Json;
+using MyCancerTeam.Core.Agents;
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Core.Notes;
 
@@ -5,6 +7,8 @@ namespace MyCancerTeam.Infrastructure.Notes;
 
 public sealed class MarkdownNoteStore : INoteStore
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
     private readonly AppConfiguration _configuration;
 
     public MarkdownNoteStore(AppConfiguration configuration)
@@ -57,5 +61,30 @@ public sealed class MarkdownNoteStore : INoteStore
     {
         Directory.CreateDirectory(_configuration.LocalWorkingFolderPath);
         await File.WriteAllTextAsync(_configuration.SummaryFilePath, content, cancellationToken);
+    }
+
+    public async Task<MdtState?> ReadMdtStateAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_configuration.MdtStateFilePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(_configuration.MdtStateFilePath, cancellationToken);
+            return JsonSerializer.Deserialize<MdtState>(json, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    public async Task WriteMdtStateAsync(MdtState state, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(_configuration.LocalWorkingFolderPath);
+        var json = JsonSerializer.Serialize(state, JsonOptions);
+        await File.WriteAllTextAsync(_configuration.MdtStateFilePath, json, cancellationToken);
     }
 }

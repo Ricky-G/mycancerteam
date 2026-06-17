@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using MyCancerTeam.Core.Agents;
 using MyCancerTeam.Core.Configuration;
@@ -17,7 +16,6 @@ namespace MyCancerTeam.App;
 public sealed class InteractiveSessionHost
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
-    private static readonly Regex RolePrefixPattern = new(@"^[A-Z][A-Za-z]+:\s+", RegexOptions.Compiled);
 
     private readonly INoteStore _noteStore;
     private readonly ITeamLeadAgent _teamLeadAgent;
@@ -198,10 +196,10 @@ public sealed class InteractiveSessionHost
 
     private async Task ProcessAsync(WorkItem item, CancellationToken cancellationToken)
     {
-        // The previous summary is the carried-forward state of the case; the shared notes file is
-        // an append-only audit log. New information is analyzed in conjunction with the previous
-        // summary, the analysis is appended to the audit log, and the summary is regenerated.
+        // The previous summary markdown is still passed to specialist agents as text context.
+        // The structured MdtState replaces regex-based parsing of that Markdown for prior-state handover.
         var previousSummary = await _noteStore.ReadSummaryAsync(cancellationToken);
+        var priorState = await _noteStore.ReadMdtStateAsync(cancellationToken);
         var auditLog = await _noteStore.ReadSharedNotesAsync(cancellationToken);
 
         var request = new WorkflowRequest
@@ -210,7 +208,7 @@ public sealed class InteractiveSessionHost
             UserInput = item.Input
         };
 
-        var response = await _teamLeadAgent.CoordinateAsync(request, previousSummary, cancellationToken);
+        var response = await _teamLeadAgent.CoordinateAsync(request, previousSummary, priorState, cancellationToken);
 
         PrintResponse(item, response);
 
@@ -219,8 +217,12 @@ public sealed class InteractiveSessionHost
 
         Log($"Shared notes updated at: {_configuration.SharedNotesFilePath}");
 
+        // Persist the new structured state so the next turn has clean typed prior state.
+        var newState = BuildMdtState(response, priorState);
+        await _noteStore.WriteMdtStateAsync(newState, cancellationToken);
+
         var summary = await _summaryComposer.ComposeAsync(
-            previousSummary,
+            priorState,
             item.Source,
             item.Input,
             response,
@@ -270,6 +272,28 @@ public sealed class InteractiveSessionHost
                 }
             }
         }
+    }
+
+    private static MdtState BuildMdtState(AgentResponse response, MdtState? prior)
+    {
+        var nextSteps = response.SuggestedClinicianQuestions
+            .Concat(response.OpenQuestions)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var engagedAgents = response.EngagedAgents
+            .Concat(prior?.EngagedAgents ?? [])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new MdtState
+        {
+            CurrentDiagnosis = response.Summary,
+            CurrentTreatment = response.TechnicalSummary,
+            NextSteps = nextSteps.Count > 0 ? nextSteps : ["Continue clinician follow-up."],
+            EngagedAgents = engagedAgents
+        };
     }
 
     private static string BuildUpdatedNotes(string sharedNotes, WorkItem item, AgentResponse response)
