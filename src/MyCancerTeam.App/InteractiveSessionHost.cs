@@ -60,7 +60,7 @@ public sealed class InteractiveSessionHost
         if (!string.IsNullOrWhiteSpace(initialInput))
         {
             await channel.Writer.WriteAsync(
-                new WorkItem(WorkItemKind.UserQuery, initialInput.Trim(), "Command-line input"),
+                new WorkItem(WorkItemKind.UserQuery, initialInput.Trim(), "Command-line input", IncludeDiagnosisContribution: true),
                 cancellationSource.Token);
         }
 
@@ -135,7 +135,7 @@ public sealed class InteractiveSessionHost
                 }
 
                 await writer.WriteAsync(
-                    new WorkItem(WorkItemKind.UserQuery, trimmed, "Interactive input"),
+                    new WorkItem(WorkItemKind.UserQuery, trimmed, "Interactive input", IncludeDiagnosisContribution: true),
                     cancellationSource.Token);
             }
         }
@@ -164,8 +164,9 @@ public sealed class InteractiveSessionHost
                     }
 
                     Log($"New note detected: {note.FilePath}");
+                    var includeDiagnosisContribution = !IsPathWithinRoot(note.FilePath, _configuration.NonMedicalNotesFolderPath);
                     await writer.WriteAsync(
-                        new WorkItem(WorkItemKind.FileNote, note.Content, $"File: {note.FilePath}"),
+                        new WorkItem(WorkItemKind.FileNote, note.Content, $"File: {note.FilePath}", includeDiagnosisContribution),
                         cancellationToken);
                 }
 
@@ -218,7 +219,13 @@ public sealed class InteractiveSessionHost
 
         Log($"Shared notes updated at: {_configuration.SharedNotesFilePath}");
 
-        var summary = await _summaryComposer.ComposeAsync(previousSummary, item.Source, item.Input, response, cancellationToken);
+        var summary = await _summaryComposer.ComposeAsync(
+            previousSummary,
+            item.Source,
+            item.Input,
+            response,
+            item.IncludeDiagnosisContribution,
+            cancellationToken);
         await _noteStore.WriteSummaryAsync(summary, cancellationToken);
 
         Log($"Summary updated at: {_configuration.SummaryFilePath}");
@@ -383,6 +390,19 @@ public sealed class InteractiveSessionHost
         => string.Equals(input, "exit", StringComparison.OrdinalIgnoreCase)
            || string.Equals(input, "quit", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsPathWithinRoot(string path, string rootPath)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(rootPath))
+        {
+            return false;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var rootPrefix = fullRoot + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
     private string Prompt(string prompt)
     {
         lock (_consoleLock)
@@ -445,5 +465,5 @@ public sealed class InteractiveSessionHost
         FileNote
     }
 
-    private sealed record WorkItem(WorkItemKind Kind, string Input, string Source);
+    private sealed record WorkItem(WorkItemKind Kind, string Input, string Source, bool IncludeDiagnosisContribution);
 }
