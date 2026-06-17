@@ -7,23 +7,48 @@ namespace MyCancerTeam.Tests;
 public sealed class TeamLeadSummaryComposerTests
 {
     [Fact]
-    public void Compose_ShouldUseCumulativeNotesLog()
+    public void Compose_RendersLatestResponseAsCurrentState()
     {
-        var response = SampleResponse();
-
-        var summary = TeamLeadSummaryComposer.Compose(SampleNotes(), "Interactive input", "Need an update", response);
+        var summary = TeamLeadSummaryComposer.Compose(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
     }
 
     [Fact]
-    public async Task ComposeAsync_WithoutLlm_ReturnsDeterministicSummary()
+    public async Task ComposeAsync_WithoutLlm_RendersLatestResponse()
     {
         var composer = new TeamLeadSummaryComposer();
 
-        var summary = await composer.ComposeAsync(SampleNotes(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
+    }
+
+    [Fact]
+    public async Task ComposeAsync_FallsBackToPreviousSummary_WhenResponseSectionEmpty()
+    {
+        var composer = new TeamLeadSummaryComposer();
+
+        // Response carries no treatment, so the prior treatment must be preserved (never regress
+        // an already-known fact).
+        var response = new AgentResponse
+        {
+            Role = AgentRole.TeamLead,
+            Summary = "Stage III disease confirmed on latest review.",
+            TechnicalSummary = string.Empty,
+            ConfidenceLevel = 0.8m,
+            SuggestedClinicianQuestions = ["Confirm the next imaging date?"],
+            EngagedAgents = ["Research Oncology Agent"]
+        };
+
+        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", response);
+
+        Assert.Contains("Stage III disease confirmed on latest review.", summary);
+        Assert.Contains("Adjuvant chemotherapy underway.", summary);
+        Assert.Contains("Confirm the next imaging date?", summary);
+        // Engaged agents are a union of the latest response and the carried-forward summary.
+        Assert.Contains("Research Oncology Agent", summary);
+        Assert.Contains("Patient Owner Agent", summary);
     }
 
     [Fact]
@@ -46,12 +71,13 @@ public sealed class TeamLeadSummaryComposerTests
             """);
         var composer = new TeamLeadSummaryComposer(llm);
 
-        var summary = await composer.ComposeAsync(SampleNotes(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
 
         Assert.Contains("LLM polished diagnosis line.", summary);
         Assert.Contains("LLM polished treatment line.", summary);
         Assert.Contains("_Last updated:", summary);
-        Assert.Contains("Stage II disease being reviewed.", llm.LastUserMessage);
+        // The deterministic rendering fed to the LLM is built from the latest response.
+        Assert.Contains("Stage II disease confirmed on latest review.", llm.LastUserMessage);
     }
 
     [Fact]
@@ -59,109 +85,40 @@ public sealed class TeamLeadSummaryComposerTests
     {
         var composer = new TeamLeadSummaryComposer(new ThrowingChatClient());
 
-        var summary = await composer.ComposeAsync(SampleNotes(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
-    }
-
-    [Fact]
-    public void Compose_ShouldPreferLatestUnifiedUpdateOverEarlierRoleLabeledUpdate()
-    {
-        // Reproduces the bug where the composer picked the OLDEST update (legacy "- Role: ..."
-        // aggregation) instead of the newest unified MDT synthesis.
-        var notes =
-            """
-            ## Update 1
-            Source: Interactive input
-            User input: legacy
-
-            ### Current Diagnosis
-            - PatientOwner: Legacy per-role diagnosis line that should not win.
-            - Radiologist: Another legacy per-role line.
-
-            ### Current Treatment
-            - MedicalOncologist: Legacy per-role treatment line.
-
-            ### Next Steps
-            - Legacy next step
-
-            ### Engaged Agents
-            - Patient Owner Agent
-
-            ## Update 2
-            Source: Interactive input
-            User input: latest
-
-            ### Current Diagnosis
-            Stage III unified MDT diagnosis with no role labels.
-
-            ### Current Treatment
-            Unified MDT treatment plan with no role labels.
-
-            ### Next Steps
-            - Latest unified next step
-
-            ### Engaged Agents
-            - Research Oncology Agent
-            """;
-
-        var summary = TeamLeadSummaryComposer.Compose(notes, "Interactive input", "x", SampleResponse());
-
-        Assert.Contains("Stage III unified MDT diagnosis with no role labels.", summary);
-        Assert.Contains("Unified MDT treatment plan with no role labels.", summary);
-        Assert.Contains("Latest unified next step", summary);
-        Assert.DoesNotContain("PatientOwner:", summary);
-        Assert.DoesNotContain("Radiologist:", summary);
-        Assert.DoesNotContain("MedicalOncologist:", summary);
-        Assert.DoesNotContain("Legacy", summary);
     }
 
     private static AgentResponse SampleResponse() => new()
     {
         Role = AgentRole.TeamLead,
-        Summary = "This response should not drive the snapshot.",
-        TechnicalSummary = "This response treatment should not appear either.",
+        Summary = "Stage II disease confirmed on latest review.",
+        TechnicalSummary = "Adjuvant therapy plan finalized after pathology.",
         ConfidenceLevel = 0.85m,
-        OpenQuestions = ["What is next?"],
-        SuggestedClinicianQuestions = ["Should we confirm the plan?"],
+        OpenQuestions = ["What is the follow-up schedule?"],
+        SuggestedClinicianQuestions = ["Review radiation options"],
         EngagedAgents = ["Patient Owner Agent", "Research Oncology Agent"]
     };
 
-    private static string SampleNotes() =>
+    private static string PreviousSummary() =>
         """
-        ## Update 1
-        Source: Interactive input
-        User input: first
+        # MyCancerTeam Summary
 
-        ### Current Diagnosis
+        _Last updated: 2026-01-01T00:00:00Z_
+
+        ## Current Diagnosis
         Stage II disease being reviewed.
 
-        ### Current Treatment
-        Surgery completed; adjuvant therapy pending.
+        ## Current Treatment
+        Adjuvant chemotherapy underway.
 
-        ### Next Steps
+        ## Next Steps
         - Confirm pathology details
         - Review adjuvant therapy options
 
-        ### Engaged Agents
-        - Patient Owner Agent
-
-        ## Update 2
-        Source: Interactive input
-        User input: second
-
-        ### Current Diagnosis
-        Team synthesis prepared.
-
-        ### Current Treatment
-        Consolidated specialist viewpoints with tracked uncertainties and unresolved issues.
-
-        ### Next Steps
-        - Review radiation options
-        - Discuss follow-up schedule
-
-        ### Engaged Agents
-        - Research Oncology Agent
+        ## Engaged Agents
+        Patient Owner Agent
         """;
 
     private static void AssertContainsCoreContent(string summary)
@@ -170,12 +127,11 @@ public sealed class TeamLeadSummaryComposerTests
         Assert.Contains("## Current Treatment", summary);
         Assert.Contains("## Next Steps", summary);
         Assert.Contains("## Engaged Agents", summary);
-        Assert.Contains("Stage II disease being reviewed.", summary);
-        Assert.Contains("Surgery completed; adjuvant therapy pending.", summary);
+        Assert.Contains("Stage II disease confirmed on latest review.", summary);
+        Assert.Contains("Adjuvant therapy plan finalized after pathology.", summary);
         Assert.Contains("Review radiation options", summary);
         Assert.Contains("Patient Owner Agent", summary);
         Assert.Contains("Research Oncology Agent", summary);
-        Assert.DoesNotContain("This response should not drive the snapshot.", summary);
         Assert.DoesNotContain("Need an update", summary);
     }
 

@@ -99,15 +99,21 @@ public sealed class TeamLeadAgentSynthesisTests
 
         var sharedNotes =
             """
-            ## Update 2026-01-01T00:00:00Z
-            Source: Interactive input
-            User input: first
+            # MyCancerTeam Summary
 
-            ### Team Lead Summary
+            _Last updated: 2026-01-01T00:00:00Z_
+
+            ## Current Diagnosis
             Stage II disease under review.
 
-            ### Open Questions
+            ## Current Treatment
+            Adjuvant chemotherapy planned.
+
+            ## Next Steps
             - Confirm final pathology grade.
+
+            ## Engaged Agents
+            Patient Owner Agent
             """;
 
         var response = await teamLead.CoordinateAsync(
@@ -117,6 +123,7 @@ public sealed class TeamLeadAgentSynthesisTests
         // The synthesis prompt must surface the prior state so previously open questions can be resolved.
         Assert.Contains("Confirm final pathology grade.", llm.LastUserMessage);
         Assert.Contains("Stage II disease under review.", llm.LastUserMessage);
+        Assert.Contains("Adjuvant chemotherapy planned.", llm.LastUserMessage);
         // The LLM resolved the prior question; no stale open questions should be carried forward.
         Assert.Empty(response.OpenQuestions);
     }

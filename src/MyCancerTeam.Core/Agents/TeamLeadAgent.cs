@@ -233,9 +233,14 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
                 builder.AppendLine($"- Prior diagnosis/summary: {prior.Summary.Trim()}");
             }
 
+            if (!string.IsNullOrWhiteSpace(prior.Treatment))
+            {
+                builder.AppendLine($"- Prior treatment: {prior.Treatment.Trim()}");
+            }
+
             if (prior.OpenQuestions.Count > 0)
             {
-                builder.AppendLine("- Previously open questions (keep only those still unresolved):");
+                builder.AppendLine("- Previously open questions / next steps (keep only those still unresolved):");
                 foreach (var question in prior.OpenQuestions)
                 {
                     builder.AppendLine($"  * {question}");
@@ -308,50 +313,37 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         return string.IsNullOrEmpty(aggregated) ? emptyMessage : aggregated;
     }
 
-    private static PriorState? ExtractPriorState(string sharedNotes)
+    private static PriorState? ExtractPriorState(string previousSummary)
     {
-        if (string.IsNullOrWhiteSpace(sharedNotes))
+        if (string.IsNullOrWhiteSpace(previousSummary))
         {
             return null;
         }
 
-        // Walk update blocks newest-first so the prior state reflects the most recent run.
-        var updates = Regex.Matches(sharedNotes, @"(?ms)^## Update .*?(?=^## Update |\z)")
-            .Cast<Match>()
-            .Reverse()
-            .ToList();
+        // The previous summary is the rendered summary.md document with level-2 sections.
+        var summary = ExtractSection(previousSummary, "Current Diagnosis") ?? string.Empty;
+        var treatment = ExtractSection(previousSummary, "Current Treatment") ?? string.Empty;
+        var openQuestions = ExtractSectionLines(previousSummary, "Next Steps");
 
-        if (updates.Count == 0)
+        if (string.IsNullOrWhiteSpace(summary)
+            && string.IsNullOrWhiteSpace(treatment)
+            && openQuestions.Count == 0)
         {
             return null;
         }
 
-        var summary = updates
-            .Select(update => ExtractSection(update.Value, "Team Lead Summary")
-                ?? ExtractSection(update.Value, "Current Diagnosis"))
-            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
-
-        var openQuestions = updates
-            .Select(update => ExtractSectionLines(update.Value, "Open Questions"))
-            .FirstOrDefault(lines => lines.Count > 0) ?? [];
-
-        if (string.IsNullOrWhiteSpace(summary) && openQuestions.Count == 0)
-        {
-            return null;
-        }
-
-        return new PriorState(summary, openQuestions);
+        return new PriorState(summary, treatment, openQuestions);
     }
 
-    private static string? ExtractSection(string block, string heading)
+    private static string? ExtractSection(string document, string heading)
     {
-        var lines = ExtractSectionLines(block, heading);
+        var lines = ExtractSectionLines(document, heading);
         return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
     }
 
-    private static IReadOnlyList<string> ExtractSectionLines(string block, string heading)
+    private static IReadOnlyList<string> ExtractSectionLines(string document, string heading)
     {
-        var match = Regex.Match(block, $@"(?ms)^### {Regex.Escape(heading)}\s*(?<content>.*?)(?=^### |\z)");
+        var match = Regex.Match(document, $@"(?ms)^#{{2,3}} {Regex.Escape(heading)}\s*(?<content>.*?)(?=^#{{2,3}} |\z)");
         if (!match.Success)
         {
             return [];
@@ -360,11 +352,11 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         return match.Groups["content"].Value
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.StartsWith("- ") ? line[2..].Trim() : line.Trim())
-            .Where(line => line.Length > 0)
+            .Where(line => line.Length > 0 && !line.StartsWith("_Last updated:", StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private sealed record PriorState(string Summary, IReadOnlyList<string> OpenQuestions);
+    private sealed record PriorState(string Summary, string Treatment, IReadOnlyList<string> OpenQuestions);
 
     private sealed class SynthesisDto
     {
