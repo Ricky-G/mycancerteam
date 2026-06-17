@@ -18,13 +18,13 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.2xx'
+          dotnet-version: '8.x'
 
-      - name: Restore dependencies
-        run: dotnet restore MyCancerTeam.slnx
+      - name: Restore
+        run: dotnet restore tests/MyCancerTeam.Tests/MyCancerTeam.Tests.csproj
 
       - name: Build
-        run: dotnet build MyCancerTeam.slnx --no-restore --configuration Release
+        run: dotnet build tests/MyCancerTeam.Tests/MyCancerTeam.Tests.csproj --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test MyCancerTeam.slnx --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test tests/MyCancerTeam.Tests/MyCancerTeam.Tests.csproj --no-build --configuration Release --verbosity normal
