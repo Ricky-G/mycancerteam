@@ -1,4 +1,6 @@
+using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using MyCancerTeam.Core.Models;
 using MyCancerTeam.Core.Research;
 
@@ -149,11 +151,13 @@ public sealed class LiveResearchEvidenceProvider : IResearchEvidenceProvider
 
     private sealed class PubMedSearchResponse
     {
+        [JsonPropertyName("esearchresult")]
         public ESearchResult? SearchResult { get; set; }
     }
 
     private sealed class ESearchResult
     {
+        [JsonPropertyName("idlist")]
         public List<string>? Ids { get; set; }
     }
 
