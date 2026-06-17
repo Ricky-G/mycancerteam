@@ -41,7 +41,7 @@ Cancer care is complex and stressful. This project helps patients/support people
 - `samples/queries.txt` - sample prompts
 
 ## Prerequisites
-- .NET SDK 8+
+- .NET SDK 10+
 - Azure login available for `DefaultAzureCredential` (`az login`)
 
 ## Quick start
