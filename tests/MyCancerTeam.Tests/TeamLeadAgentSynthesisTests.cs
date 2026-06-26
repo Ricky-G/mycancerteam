@@ -35,7 +35,8 @@ public sealed class TeamLeadAgentSynthesisTests
 
         var response = await teamLead.CoordinateAsync(
             new WorkflowRequest { WorkflowType = WorkflowType.GeneralUpdate, UserInput = "Latest MRI in." },
-            sharedNotes: string.Empty);
+            sharedNotes: string.Empty,
+            priorState: null);
 
         Assert.Equal(
             "Stage II breast cancer with stable imaging and confirmed pathology under MDT review.",
@@ -70,7 +71,8 @@ public sealed class TeamLeadAgentSynthesisTests
 
         var response = await teamLead.CoordinateAsync(
             new WorkflowRequest { WorkflowType = WorkflowType.GeneralUpdate, UserInput = "Update." },
-            sharedNotes: string.Empty);
+            sharedNotes: string.Empty,
+            priorState: null);
 
         Assert.Contains("PatientOwner: Patient summary.", response.Summary);
         Assert.Contains("MedicalOncologist: Med onc technical.", response.TechnicalSummary);
@@ -97,28 +99,18 @@ public sealed class TeamLeadAgentSynthesisTests
 
         var teamLead = new TeamLeadAgent(registry, new WorkflowRouter(), llm);
 
-        var sharedNotes =
-            """
-            # MyCancerTeam Summary
-
-            _Last updated: 2026-01-01T00:00:00Z_
-
-            ## Current Diagnosis
-            Stage II disease under review.
-
-            ## Current Treatment
-            Adjuvant chemotherapy planned.
-
-            ## Next Steps
-            - Confirm final pathology grade.
-
-            ## Engaged Agents
-            Patient Owner Agent
-            """;
+        var priorState = new MdtState
+        {
+            CurrentDiagnosis = "Stage II disease under review.",
+            CurrentTreatment = "Adjuvant chemotherapy planned.",
+            NextSteps = ["Confirm final pathology grade."],
+            EngagedAgents = ["Patient Owner Agent"]
+        };
 
         var response = await teamLead.CoordinateAsync(
             new WorkflowRequest { WorkflowType = WorkflowType.GeneralUpdate, UserInput = "Pathology results in." },
-            sharedNotes);
+            sharedNotes: string.Empty,
+            priorState);
 
         // The synthesis prompt must surface the prior state so previously open questions can be resolved.
         Assert.Contains("Confirm final pathology grade.", llm.LastUserMessage);

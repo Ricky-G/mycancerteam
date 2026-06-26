@@ -30,18 +30,18 @@ public sealed class TeamLeadSummaryComposer
         _llmClient = llmClient;
     }
 
-    public Task<string> ComposeAsync(string previousSummary, string source, string input, AgentResponse response, CancellationToken cancellationToken = default)
-        => ComposeAsync(previousSummary, source, input, response, includeDiagnosisContribution: true, cancellationToken);
+    public Task<string> ComposeAsync(MdtState? priorState, string source, string input, AgentResponse response, CancellationToken cancellationToken = default)
+        => ComposeAsync(priorState, source, input, response, includeDiagnosisContribution: true, cancellationToken);
 
     public async Task<string> ComposeAsync(
-        string previousSummary,
+        MdtState? priorState,
         string source,
         string input,
         AgentResponse response,
         bool includeDiagnosisContribution,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = BuildSnapshot(previousSummary, response, includeDiagnosisContribution);
+        var snapshot = BuildSnapshot(priorState, response, includeDiagnosisContribution);
         var deterministic = RenderDeterministic(snapshot);
 
         if (_llmClient is null)
@@ -70,43 +70,46 @@ public sealed class TeamLeadSummaryComposer
         }
     }
 
-    public static string Compose(string previousSummary, string source, string input, AgentResponse response)
-        => Compose(previousSummary, source, input, response, includeDiagnosisContribution: true);
+    public static string Compose(MdtState? priorState, string source, string input, AgentResponse response)
+        => Compose(priorState, source, input, response, includeDiagnosisContribution: true);
 
     public static string Compose(
-        string previousSummary,
+        MdtState? priorState,
         string source,
         string input,
         AgentResponse response,
         bool includeDiagnosisContribution)
     {
-        var snapshot = BuildSnapshot(previousSummary, response, includeDiagnosisContribution);
+        var snapshot = BuildSnapshot(priorState, response, includeDiagnosisContribution);
         return RenderDeterministic(snapshot);
     }
 
     // The latest synthesized response is the authoritative current state (the agent already
-    // folded the previous summary into it). The previous summary is only consulted as a fallback
+    // folded the previous summary into it). The prior MdtState is only consulted as a fallback
     // for sections the response left empty, so we never regress an already-known fact.
-    private static SummarySnapshot BuildSnapshot(string previousSummary, AgentResponse response, bool includeDiagnosisContribution)
+    private static SummarySnapshot BuildSnapshot(MdtState? priorState, AgentResponse response, bool includeDiagnosisContribution)
     {
         var current = CreateSnapshotFromResponse(response);
-        var prior = ParseSnapshot(previousSummary);
+
+        var priorDiagnosis = priorState?.CurrentDiagnosis;
+        var priorTreatment = priorState?.CurrentTreatment;
+        var priorNextSteps = priorState?.NextSteps;
+        var priorEngagedAgents = priorState?.EngagedAgents ?? [];
 
         var diagnosis = includeDiagnosisContribution
             ? (IsUseful(current.CurrentDiagnosis)
                 ? current.CurrentDiagnosis
-                : prior?.CurrentDiagnosis ?? "Not yet established.")
-            : prior?.CurrentDiagnosis ?? "Not yet established.";
+                : (IsUseful(priorDiagnosis) ? priorDiagnosis! : "Not yet established."))
+            : (IsUseful(priorDiagnosis) ? priorDiagnosis! : "Not yet established.");
         var treatment = IsUseful(current.CurrentTreatment)
             ? current.CurrentTreatment
-            : prior?.CurrentTreatment ?? "Not yet established.";
+            : (IsUseful(priorTreatment) ? priorTreatment! : "Not yet established.");
         var nextSteps = current.NextSteps.Count > 0 && current.NextSteps.Any(IsUseful)
             ? current.NextSteps
-            : prior?.NextSteps ?? ["Continue clinician follow-up."];
+            : (priorNextSteps is { Count: > 0 } ? priorNextSteps : ["Continue clinician follow-up."]);
 
         var engagedAgents = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var priorEngagedAgents = prior?.EngagedAgents ?? [];
         foreach (var agent in current.EngagedAgents.Concat(priorEngagedAgents))
         {
             if (seen.Add(agent))
@@ -161,49 +164,6 @@ public sealed class TeamLeadSummaryComposer
         return stamp + Environment.NewLine + Environment.NewLine + formatted;
     }
 
-    private static SummarySnapshot? ParseSnapshot(string previousSummary)
-    {
-        if (string.IsNullOrWhiteSpace(previousSummary))
-        {
-            return null;
-        }
-
-        // The previous summary is the rendered summary.md document with level-2 sections.
-        var currentDiagnosis = ExtractSectionText(previousSummary, "Current Diagnosis") ?? string.Empty;
-        var currentTreatment = ExtractSectionText(previousSummary, "Current Treatment") ?? string.Empty;
-
-        var nextSteps = ExtractSectionLines(previousSummary, "Next Steps")
-            .Where(IsUseful)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(5)
-            .ToList();
-
-        var engagedAgents = new List<string>();
-        var seenAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var agent in ExtractSectionLines(previousSummary, "Engaged Agents")
-                     .SelectMany(line => line.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
-        {
-            if (seenAgents.Add(agent))
-            {
-                engagedAgents.Add(agent);
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(currentDiagnosis)
-            && string.IsNullOrWhiteSpace(currentTreatment)
-            && nextSteps.Count == 0
-            && engagedAgents.Count == 0)
-        {
-            return null;
-        }
-
-        return new SummarySnapshot(
-            string.IsNullOrWhiteSpace(currentDiagnosis) ? "Not yet established." : TrimBrief(currentDiagnosis),
-            string.IsNullOrWhiteSpace(currentTreatment) ? "Not yet established." : TrimBrief(currentTreatment),
-            nextSteps.Count == 0 ? ["Continue clinician follow-up."] : nextSteps,
-            engagedAgents);
-    }
-
     private static SummarySnapshot CreateSnapshotFromResponse(AgentResponse response)
     {
         var nextSteps = response.SuggestedClinicianQuestions
@@ -247,34 +207,6 @@ public sealed class TeamLeadSummaryComposer
 
         var single = lines.Count == 1 ? lines[0] : trimmed;
         return single.Length > 1200 ? single[..1200].TrimEnd() + "..." : single;
-    }
-
-    private static string? ExtractSectionText(string block, string heading)
-    {
-        var lines = ExtractSectionLines(block, heading).ToList();
-        if (lines.Count == 0)
-        {
-            return null;
-        }
-
-        return string.Join(Environment.NewLine, lines).Trim();
-    }
-
-    private static IEnumerable<string> ExtractSectionLines(string block, string heading)
-    {
-        var pattern = $@"(?ms)^#{{2,3}} {Regex.Escape(heading)}\s*(?<content>.*?)(?=^#{{2,3}} |\z)";
-        var match = Regex.Match(block, pattern);
-        if (!match.Success)
-        {
-            return [];
-        }
-
-        var content = match.Groups["content"].Value;
-        var lines = content.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return lines
-            .Select(line => line.StartsWith("- ") ? line[2..].Trim() : line.Trim())
-            .Where(line => line.Length > 0 && !line.StartsWith("_Last updated:", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsUseful(string? value)

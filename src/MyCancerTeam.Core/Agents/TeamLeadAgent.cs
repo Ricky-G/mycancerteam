@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Agents.AI.Workflows;
 using MyCancerTeam.Core.AI;
 using MyCancerTeam.Core.Workflows;
@@ -58,9 +57,9 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
     public bool CanHandle(AgentContext context) => true;
 
     public Task<AgentResponse> RespondAsync(AgentContext context, CancellationToken cancellationToken = default)
-        => CoordinateAsync(context.WorkflowRequest, context.SharedNotes, cancellationToken);
+        => CoordinateAsync(context.WorkflowRequest, context.SharedNotes, priorState: null, cancellationToken);
 
-    public async Task<AgentResponse> CoordinateAsync(WorkflowRequest request, string sharedNotes, CancellationToken cancellationToken = default)
+    public async Task<AgentResponse> CoordinateAsync(WorkflowRequest request, string sharedNotes, MdtState? priorState, CancellationToken cancellationToken = default)
     {
         var roles = _workflowRouter.GetRecommendedRoles(request);
         var sessionId = string.Format(TeamLeadSessionIdTemplate, request.WorkflowType, Guid.NewGuid());
@@ -142,7 +141,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
             .Distinct()
             .ToList();
 
-        var synthesis = await SynthesizeAsync(request, specialistResponses, sharedNotes, cancellationToken);
+        var synthesis = await SynthesizeAsync(request, specialistResponses, priorState, cancellationToken);
         if (synthesis is not null)
         {
             return new AgentResponse
@@ -174,7 +173,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         };
     }
 
-    private async Task<SynthesisDto?> SynthesizeAsync(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, string sharedNotes, CancellationToken cancellationToken)
+    private async Task<SynthesisDto?> SynthesizeAsync(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, MdtState? priorState, CancellationToken cancellationToken)
     {
         if (_llmClient is null || specialistResponses.Count == 0)
         {
@@ -183,7 +182,7 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
 
         try
         {
-            var userMessage = BuildSynthesisUserMessage(request, specialistResponses, sharedNotes);
+            var userMessage = BuildSynthesisUserMessage(request, specialistResponses, priorState);
             var json = await _llmClient.CompleteAsync(SynthesisSystemPrompt, userMessage, cancellationToken);
             var parsed = JsonSerializer.Deserialize<SynthesisDto>(json, JsonOptions);
 
@@ -217,33 +216,35 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         }
     }
 
-    private static string BuildSynthesisUserMessage(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, string sharedNotes)
+    private static string BuildSynthesisUserMessage(WorkflowRequest request, IReadOnlyList<AgentResponse> specialistResponses, MdtState? priorState)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"Workflow type: {request.WorkflowType}");
         builder.AppendLine($"Patient input: {request.UserInput}");
         builder.AppendLine();
 
-        var prior = ExtractPriorState(sharedNotes);
-        if (prior is not null)
+        if (priorState is not null
+            && (!string.IsNullOrWhiteSpace(priorState.CurrentDiagnosis)
+                || !string.IsNullOrWhiteSpace(priorState.CurrentTreatment)
+                || priorState.NextSteps.Count > 0))
         {
             builder.AppendLine("Previously recorded MDT state (build on this; resolve and drop questions now answered by the new viewpoints below):");
-            if (!string.IsNullOrWhiteSpace(prior.Summary))
+            if (!string.IsNullOrWhiteSpace(priorState.CurrentDiagnosis))
             {
-                builder.AppendLine($"- Prior diagnosis/summary: {prior.Summary.Trim()}");
+                builder.AppendLine($"- Prior diagnosis/summary: {priorState.CurrentDiagnosis.Trim()}");
             }
 
-            if (!string.IsNullOrWhiteSpace(prior.Treatment))
+            if (!string.IsNullOrWhiteSpace(priorState.CurrentTreatment))
             {
-                builder.AppendLine($"- Prior treatment: {prior.Treatment.Trim()}");
+                builder.AppendLine($"- Prior treatment: {priorState.CurrentTreatment.Trim()}");
             }
 
-            if (prior.OpenQuestions.Count > 0)
+            if (priorState.NextSteps.Count > 0)
             {
                 builder.AppendLine("- Previously open questions / next steps (keep only those still unresolved):");
-                foreach (var question in prior.OpenQuestions)
+                foreach (var step in priorState.NextSteps)
                 {
-                    builder.AppendLine($"  * {question}");
+                    builder.AppendLine($"  * {step}");
                 }
             }
 
@@ -312,51 +313,6 @@ public sealed class TeamLeadAgent : ITeamLeadAgent
         var aggregated = builder.ToString().Trim();
         return string.IsNullOrEmpty(aggregated) ? emptyMessage : aggregated;
     }
-
-    private static PriorState? ExtractPriorState(string previousSummary)
-    {
-        if (string.IsNullOrWhiteSpace(previousSummary))
-        {
-            return null;
-        }
-
-        // The previous summary is the rendered summary.md document with level-2 sections.
-        var summary = ExtractSection(previousSummary, "Current Diagnosis") ?? string.Empty;
-        var treatment = ExtractSection(previousSummary, "Current Treatment") ?? string.Empty;
-        var openQuestions = ExtractSectionLines(previousSummary, "Next Steps");
-
-        if (string.IsNullOrWhiteSpace(summary)
-            && string.IsNullOrWhiteSpace(treatment)
-            && openQuestions.Count == 0)
-        {
-            return null;
-        }
-
-        return new PriorState(summary, treatment, openQuestions);
-    }
-
-    private static string? ExtractSection(string document, string heading)
-    {
-        var lines = ExtractSectionLines(document, heading);
-        return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
-    }
-
-    private static IReadOnlyList<string> ExtractSectionLines(string document, string heading)
-    {
-        var match = Regex.Match(document, $@"(?ms)^#{{2,3}} {Regex.Escape(heading)}\s*(?<content>.*?)(?=^#{{2,3}} |\z)");
-        if (!match.Success)
-        {
-            return [];
-        }
-
-        return match.Groups["content"].Value
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.StartsWith("- ") ? line[2..].Trim() : line.Trim())
-            .Where(line => line.Length > 0 && !line.StartsWith("_Last updated:", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-    }
-
-    private sealed record PriorState(string Summary, string Treatment, IReadOnlyList<string> OpenQuestions);
 
     private sealed class SynthesisDto
     {

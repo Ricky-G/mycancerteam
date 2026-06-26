@@ -31,4 +31,7 @@ public sealed class AppConfiguration
 
     /// <summary>The summary markdown file, stored at the <see cref="LocalWorkingFolderPath"/> root.</summary>
     public string SummaryFilePath => Path.Combine(LocalWorkingFolderPath, "summary.md");
+
+    /// <summary>Structured MDT state JSON, stored alongside the summary at the <see cref="LocalWorkingFolderPath"/> root.</summary>
+    public string MdtStateFilePath => Path.Combine(LocalWorkingFolderPath, "mdt-state.json");
 }

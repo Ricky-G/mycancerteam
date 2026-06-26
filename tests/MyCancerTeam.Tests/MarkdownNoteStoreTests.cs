@@ -1,3 +1,4 @@
+using MyCancerTeam.Core.Agents;
 using MyCancerTeam.Core.Configuration;
 using MyCancerTeam.Infrastructure.Notes;
 
@@ -108,6 +109,97 @@ public sealed class MarkdownNoteStoreTests
 
             await store.WriteSummaryAsync("# Summary\n\nState.");
             Assert.Equal("# Summary\n\nState.", await store.ReadSummaryAsync());
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NoteStore_ReadMdtStateAsync_ShouldReturnNullWhenMissing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"mycancerteam-mdt-state-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        var config = new AppConfiguration
+        {
+            LocalWorkingFolderPath = root,
+            OurNotesFolderPath = Path.Combine(root, "our-notes")
+        };
+
+        try
+        {
+            var store = new MarkdownNoteStore(config);
+
+            Assert.Null(await store.ReadMdtStateAsync());
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NoteStore_WriteMdtStateAsync_ShouldRoundTripStructuredState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"mycancerteam-mdt-roundtrip-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        var config = new AppConfiguration
+        {
+            LocalWorkingFolderPath = root,
+            OurNotesFolderPath = Path.Combine(root, "our-notes")
+        };
+
+        try
+        {
+            var store = new MarkdownNoteStore(config);
+
+            var state = new MdtState
+            {
+                CurrentDiagnosis = "Stage II breast cancer.",
+                CurrentTreatment = "Adjuvant chemotherapy planned.",
+                NextSteps = ["Confirm pathology.", "Review options."],
+                EngagedAgents = ["Patient Owner Agent", "Medical Oncologist Agent"]
+            };
+
+            await store.WriteMdtStateAsync(state);
+            var read = await store.ReadMdtStateAsync();
+
+            Assert.NotNull(read);
+            Assert.Equal("Stage II breast cancer.", read.CurrentDiagnosis);
+            Assert.Equal("Adjuvant chemotherapy planned.", read.CurrentTreatment);
+            Assert.Equal(["Confirm pathology.", "Review options."], read.NextSteps);
+            Assert.Equal(["Patient Owner Agent", "Medical Oncologist Agent"], read.EngagedAgents);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NoteStore_WriteMdtStateAsync_ShouldOverwritePreviousState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"mycancerteam-mdt-overwrite-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        var config = new AppConfiguration
+        {
+            LocalWorkingFolderPath = root,
+            OurNotesFolderPath = Path.Combine(root, "our-notes")
+        };
+
+        try
+        {
+            var store = new MarkdownNoteStore(config);
+
+            await store.WriteMdtStateAsync(new MdtState { CurrentDiagnosis = "First state." });
+            await store.WriteMdtStateAsync(new MdtState { CurrentDiagnosis = "Second state." });
+
+            var read = await store.ReadMdtStateAsync();
+            Assert.Equal("Second state.", read?.CurrentDiagnosis);
         }
         finally
         {

@@ -9,7 +9,7 @@ public sealed class TeamLeadSummaryComposerTests
     [Fact]
     public void Compose_RendersLatestResponseAsCurrentState()
     {
-        var summary = TeamLeadSummaryComposer.Compose(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
+        var summary = TeamLeadSummaryComposer.Compose(PriorState(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
     }
@@ -19,7 +19,7 @@ public sealed class TeamLeadSummaryComposerTests
     {
         var composer = new TeamLeadSummaryComposer();
 
-        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PriorState(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
     }
@@ -41,12 +41,12 @@ public sealed class TeamLeadSummaryComposerTests
             EngagedAgents = ["Research Oncology Agent"]
         };
 
-        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", response);
+        var summary = await composer.ComposeAsync(PriorState(), "Interactive input", "Need an update", response);
 
         Assert.Contains("Stage III disease confirmed on latest review.", summary);
         Assert.Contains("Adjuvant chemotherapy underway.", summary);
         Assert.Contains("Confirm the next imaging date?", summary);
-        // Engaged agents are a union of the latest response and the carried-forward summary.
+        // Engaged agents are a union of the latest response and the carried-forward state.
         Assert.Contains("Research Oncology Agent", summary);
         Assert.Contains("Patient Owner Agent", summary);
     }
@@ -66,7 +66,7 @@ public sealed class TeamLeadSummaryComposerTests
         };
 
         var summary = await composer.ComposeAsync(
-            PreviousSummary(),
+            PriorState(),
             "File: C:\\repo\\.local\\non-medical-notes\\insurance.txt",
             "Insurance update",
             response,
@@ -97,7 +97,7 @@ public sealed class TeamLeadSummaryComposerTests
             """);
         var composer = new TeamLeadSummaryComposer(llm);
 
-        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PriorState(), "Interactive input", "Need an update", SampleResponse());
 
         Assert.Contains("LLM polished diagnosis line.", summary);
         Assert.Contains("LLM polished treatment line.", summary);
@@ -111,7 +111,7 @@ public sealed class TeamLeadSummaryComposerTests
     {
         var composer = new TeamLeadSummaryComposer(new ThrowingChatClient());
 
-        var summary = await composer.ComposeAsync(PreviousSummary(), "Interactive input", "Need an update", SampleResponse());
+        var summary = await composer.ComposeAsync(PriorState(), "Interactive input", "Need an update", SampleResponse());
 
         AssertContainsCoreContent(summary);
     }
@@ -127,25 +127,13 @@ public sealed class TeamLeadSummaryComposerTests
         EngagedAgents = ["Patient Owner Agent", "Research Oncology Agent"]
     };
 
-    private static string PreviousSummary() =>
-        """
-        # MyCancerTeam Summary
-
-        _Last updated: 2026-01-01T00:00:00Z_
-
-        ## Current Diagnosis
-        Stage II disease being reviewed.
-
-        ## Current Treatment
-        Adjuvant chemotherapy underway.
-
-        ## Next Steps
-        - Confirm pathology details
-        - Review adjuvant therapy options
-
-        ## Engaged Agents
-        Patient Owner Agent
-        """;
+    private static MdtState? PriorState() => new MdtState
+    {
+        CurrentDiagnosis = "Stage II disease being reviewed.",
+        CurrentTreatment = "Adjuvant chemotherapy underway.",
+        NextSteps = ["Confirm pathology details", "Review adjuvant therapy options"],
+        EngagedAgents = ["Patient Owner Agent"]
+    };
 
     private static void AssertContainsCoreContent(string summary)
     {
