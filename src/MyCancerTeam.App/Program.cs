@@ -62,7 +62,7 @@ if (isWebMode)
 {
     var webTask = SimpleWebUiHost.RunAsync(configuration, noteStore, cts.Token);
     var hostTask = host.RunAsync(cts, initialInput);
-    await Task.WhenAny(webTask, hostTask);
+    await Task.WhenAll(webTask, hostTask);
 }
 else
 {

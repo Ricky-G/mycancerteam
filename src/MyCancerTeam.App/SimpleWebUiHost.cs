@@ -40,9 +40,27 @@ public static class SimpleWebUiHost
             var form = await context.Request.ReadFormAsync(context.RequestAborted);
             foreach (var file in form.Files)
             {
-                var filePath = Path.Combine(configuration.MedicalNotesFolderPath, file.FileName);
-                await using var stream = new FileStream(filePath, FileMode.Create);
-                await file.CopyToAsync(stream, context.RequestAborted);
+                var safeFileName = Path.GetFileName(file.FileName);
+                var filePath = Path.Combine(configuration.MedicalNotesFolderPath, safeFileName);
+                
+                // Ensure unique filename
+                var count = 1;
+                while (true)
+                {
+                    try
+                    {
+                        await using var stream = new FileStream(filePath, FileMode.CreateNew);
+                        await file.CopyToAsync(stream, context.RequestAborted);
+                        break;
+                    }
+                    catch (IOException)
+                    {
+                        var nameWithoutExt = Path.GetFileNameWithoutExtension(safeFileName);
+                        var ext = Path.GetExtension(safeFileName);
+                        filePath = Path.Combine(configuration.MedicalNotesFolderPath, $"{nameWithoutExt}_{count++}{ext}");
+                    }
+                }
+                
                 Console.WriteLine($"[WebUI] Uploaded file to: {filePath}");
             }
             context.Response.StatusCode = 200;
@@ -55,7 +73,7 @@ public static class SimpleWebUiHost
             var data = JsonSerializer.Deserialize<TextInputRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (!string.IsNullOrWhiteSpace(data?.Text))
             {
-                var filename = $"note_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                var filename = $"note_{DateTime.UtcNow:yyyyMMdd_HHmmss}.txt";
                 var filePath = Path.Combine(configuration.MedicalNotesFolderPath, filename);
                 await File.WriteAllTextAsync(filePath, data.Text, context.RequestAborted);
                 Console.WriteLine($"[WebUI] Saved text note to: {filePath}");
@@ -75,7 +93,7 @@ public static class SimpleWebUiHost
             await context.Response.WriteAsync("data: connected\n\n", tcs.Token);
             await context.Response.Body.FlushAsync(tcs.Token);
 
-            var queue = logInterceptor.Subscribe();
+            var (id, queue) = logInterceptor.Subscribe();
             try
             {
                 while (!tcs.Token.IsCancellationRequested)
@@ -92,7 +110,7 @@ public static class SimpleWebUiHost
             }
             finally
             {
-                logInterceptor.Unsubscribe(queue);
+                logInterceptor.Unsubscribe(id);
             }
         });
 
@@ -108,7 +126,7 @@ public static class SimpleWebUiHost
     private class ConsoleLogInterceptor : TextWriter
     {
         private readonly TextWriter _originalConsole;
-        private readonly ConcurrentBag<System.Threading.Channels.Channel<string>> _subscribers = new();
+        private readonly ConcurrentDictionary<Guid, System.Threading.Channels.Channel<string>> _subscribers = new();
 
         public ConsoleLogInterceptor()
         {
@@ -139,24 +157,26 @@ public static class SimpleWebUiHost
 
         private void Broadcast(string message)
         {
-            foreach (var channel in _subscribers)
+            foreach (var kvp in _subscribers)
             {
-                channel.Writer.TryWrite(message);
+                kvp.Value.Writer.TryWrite(message);
             }
         }
 
-        public System.Threading.Channels.Channel<string> Subscribe()
+        public (Guid Id, System.Threading.Channels.Channel<string> Channel) Subscribe()
         {
             var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
-            _subscribers.Add(channel);
-            return channel;
+            var id = Guid.NewGuid();
+            _subscribers.TryAdd(id, channel);
+            return (id, channel);
         }
 
-        public void Unsubscribe(System.Threading.Channels.Channel<string> channel)
+        public void Unsubscribe(Guid id)
         {
-            // ConcurrentBag doesn't easily support removal, but in our simple case, 
-            // since we don't expect many connections, we can just let it be, or complete it
-            channel.Writer.TryComplete();
+            if (_subscribers.TryRemove(id, out var channel))
+            {
+                channel.Writer.TryComplete();
+            }
         }
     }
 
