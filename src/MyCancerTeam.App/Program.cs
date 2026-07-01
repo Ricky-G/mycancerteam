@@ -50,12 +50,24 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cts.Cancel();
 };
 
-var initialInput = args.Length > 0 ? string.Join(' ', args) : null;
+var isWebMode = args.Contains("--web");
+var initialInputArgs = args.Where(a => a != "--web").ToArray();
+var initialInput = initialInputArgs.Length > 0 ? string.Join(' ', initialInputArgs) : null;
 
 var summaryComposer = new TeamLeadSummaryComposer(llmClient);
 
 var host = new InteractiveSessionHost(noteStore, teamLeadAgent, draftService, scanner, summaryComposer, configuration);
-await host.RunAsync(cts, initialInput);
+
+if (isWebMode)
+{
+    var webTask = SimpleWebUiHost.RunAsync(configuration, noteStore, cts.Token);
+    var hostTask = host.RunAsync(cts, initialInput);
+    await Task.WhenAll(webTask, hostTask);
+}
+else
+{
+    await host.RunAsync(cts, initialInput);
+}
 
 static string ResolveRepositoryRoot()
 {
